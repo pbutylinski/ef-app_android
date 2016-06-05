@@ -203,6 +203,7 @@ class ActivityRoot : AppCompatActivity(), RootAPI {
                 R.id.navWebTwitter -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://twitter.com/eurofurence")))
                 R.id.navDevReload -> UpdateIntentService.dispatchUpdate(this)
                 R.id.navMap -> navigateRoot(FragmentMap::class.java)
+                R.id.navNotes -> navigateRoot(FragmentViewNotes::class.java)
                 R.id.navDevSettings -> handleSettings()
             }
 
