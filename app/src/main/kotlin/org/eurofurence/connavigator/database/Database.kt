@@ -5,6 +5,7 @@ import io.swagger.client.model.*
 import org.eurofurence.connavigator.store.cached
 import org.eurofurence.connavigator.store.createGson
 import org.eurofurence.connavigator.store.createSerialized
+import org.eurofurence.connavigator.util.Note
 import org.eurofurence.connavigator.util.extensions.cachedApiDB
 import org.eurofurence.connavigator.util.extensions.get
 import org.joda.time.DateTime
@@ -26,6 +27,9 @@ class Database(val context: Context) {
      */
     val dateDb =
             createSerialized(File(context.cacheDir, "date.db"), Date::class.java).cached()
+
+    val noteDb =
+            createSerialized(File(context.cacheDir, "notes.db"), Note::class.java).cached()
 
     /**
      * Database storing favorited events
@@ -89,6 +93,7 @@ class Database(val context: Context) {
 
     fun clear() {
         dateDb.delete()
+        noteDb.delete()
         favoritedDb.delete()
         eventConferenceDayDb.delete()
         eventConferenceRoomDb.delete()
