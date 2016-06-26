@@ -5,15 +5,16 @@ import android.support.v4.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
 import android.widget.TextView
+import com.daimajia.slider.library.SliderLayout
+import com.daimajia.slider.library.SliderTypes.DefaultSliderView
 import io.swagger.client.model.Info
 import org.eurofurence.connavigator.R
 import org.eurofurence.connavigator.database.Database
-import org.eurofurence.connavigator.net.imageService
 import org.eurofurence.connavigator.tracking.Analytics
 import org.eurofurence.connavigator.util.delegators.view
 import org.eurofurence.connavigator.util.extensions.*
+import org.eurofurence.connavigator.webapi.apiService
 import us.feras.mdv.MarkdownView
 import java.util.*
 
@@ -30,7 +31,7 @@ class FragmentViewInfo() : Fragment() {
     }
 
     // Views
-    val image by view(ImageView::class.java)
+    val image by view(SliderLayout::class.java)
     val title by view(TextView::class.java)
     val text by view(MarkdownView::class.java)
 
@@ -55,10 +56,14 @@ class FragmentViewInfo() : Fragment() {
             // Set the properties of the view
             title.text = info.title
             text.loadMarkdown(info.text)
-            image.scaleType = ImageView.ScaleType.CENTER_CROP
 
             if (info.imageIds.isNotEmpty()) {
-                imageService.load(database.imageDb[UUID.fromString(info.imageIds.first())], image, showHide = false)
+                for (infoImage in info.imageIds) {
+                    val slider = DefaultSliderView(context)
+                    slider.image(apiService.formatUrl(database.imageDb[UUID.fromString(infoImage)]!!.url))
+                    image.addSlider(slider)
+                }
+
             } else {
                 image.visibility = View.GONE
             }

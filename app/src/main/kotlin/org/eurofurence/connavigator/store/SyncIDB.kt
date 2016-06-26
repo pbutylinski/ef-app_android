@@ -20,6 +20,7 @@ class SyncIDB<T>(val deleted: (T) -> Boolean, val synced: IDB<T>) : IDB<T>() {
     override fun id(item: T): Any = synced.id(item)
 
     override var keyValues: Map<Any, T>
+
         get() = synced.keyValues
         set(values) {
             synced.keyValues = values
