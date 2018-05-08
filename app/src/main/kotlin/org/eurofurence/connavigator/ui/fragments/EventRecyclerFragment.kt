@@ -1,14 +1,11 @@
 package org.eurofurence.connavigator.ui.fragments
 
-import android.os.AsyncTask
 import android.os.Bundle
 import android.support.v4.app.Fragment
-import android.support.v4.content.ContextCompat.getColor
 import android.support.v7.widget.DefaultItemAnimator
 import android.support.v7.widget.LinearLayoutManager
 import android.support.v7.widget.RecyclerView
-import android.text.SpannableStringBuilder
-import android.text.style.ImageSpan
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -16,184 +13,263 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
-import io.swagger.client.model.EventEntry
+import io.reactivex.Observable
+import io.reactivex.android.schedulers.AndroidSchedulers
+import io.swagger.client.model.EventRecord
+import nl.komponents.kovenant.then
+import nl.komponents.kovenant.ui.failUi
+import nl.komponents.kovenant.ui.promiseOnUi
+import nl.komponents.kovenant.ui.successUi
 import org.eurofurence.connavigator.R
-import org.eurofurence.connavigator.database.Database
+import org.eurofurence.connavigator.broadcast.DataChanged
+import org.eurofurence.connavigator.database.HasDb
+import org.eurofurence.connavigator.database.eventIsHappening
+import org.eurofurence.connavigator.database.eventIsUpcoming
+import org.eurofurence.connavigator.database.eventStart
+import org.eurofurence.connavigator.database.lazyLocateDb
 import org.eurofurence.connavigator.net.imageService
-import org.eurofurence.connavigator.tracking.Analytics
-import org.eurofurence.connavigator.ui.FragmentViewEvent
 import org.eurofurence.connavigator.ui.communication.ContentAPI
-import org.eurofurence.connavigator.ui.dialogs.EventDialog
-import org.eurofurence.connavigator.ui.filters.AnyEventFilter
-import org.eurofurence.connavigator.ui.filters.AnyFavoritedEventFilter
-import org.eurofurence.connavigator.ui.filters.IEventFilter
+import org.eurofurence.connavigator.ui.dialogs.eventDialog
+import org.eurofurence.connavigator.ui.filters.EventList
 import org.eurofurence.connavigator.ui.views.NonScrollingLinearLayout
-import org.eurofurence.connavigator.util.EmbeddedLocalBroadcastReceiver
 import org.eurofurence.connavigator.util.Formatter
-import org.eurofurence.connavigator.util.RemoteConfig
-import org.eurofurence.connavigator.util.TouchVibrator
 import org.eurofurence.connavigator.util.delegators.view
-import org.eurofurence.connavigator.util.extensions.*
+import org.eurofurence.connavigator.util.extensions.applyOnRoot
+import org.eurofurence.connavigator.util.extensions.endTimeString
+import org.eurofurence.connavigator.util.extensions.fontAwesomeView
+import org.eurofurence.connavigator.util.extensions.fullTitle
+import org.eurofurence.connavigator.util.extensions.localReceiver
+import org.eurofurence.connavigator.util.extensions.logd
+import org.eurofurence.connavigator.util.extensions.recycler
+import org.eurofurence.connavigator.util.extensions.startTimeString
+import org.eurofurence.connavigator.util.v2.compatAppearance
+import org.eurofurence.connavigator.util.v2.fw
+import org.eurofurence.connavigator.util.v2.get
+import org.eurofurence.connavigator.util.v2.minMaxWidth
+import org.eurofurence.connavigator.util.v2.percent
+import org.jetbrains.anko.AnkoComponent
+import org.jetbrains.anko.AnkoContext
+import org.jetbrains.anko.AnkoLogger
+import org.jetbrains.anko.backgroundResource
+import org.jetbrains.anko.dip
+import org.jetbrains.anko.horizontalPadding
+import org.jetbrains.anko.imageView
+import org.jetbrains.anko.info
+import org.jetbrains.anko.linearLayout
+import org.jetbrains.anko.matchParent
+import org.jetbrains.anko.padding
+import org.jetbrains.anko.progressBar
+import org.jetbrains.anko.singleLine
+import org.jetbrains.anko.tableLayout
+import org.jetbrains.anko.tableRow
+import org.jetbrains.anko.textView
+import org.jetbrains.anko.verticalLayout
+import org.jetbrains.anko.verticalPadding
+import org.jetbrains.anko.wrapContent
 import org.joda.time.DateTime
+import org.joda.time.Minutes
+import kotlin.coroutines.experimental.buildSequence
+
+fun HasDb.glyphFor(event: EventRecord): List<String> {
+    // Show icon for the cockroach
+    if (event.panelHosts?.contains("onkel kage", true) ?: false)
+        return listOf("{fa-bug}", "{fa-glass}")
+
+    // Decide for glyph based on name
+    val name = event[toRoom]?.name ?: return emptyList()
+    return when {
+        "Art Show" in name -> listOf("{fa-photo}")
+        "Dealer" in name -> listOf("{fa-shopping-cart}")
+        "Main Stage" in name -> listOf("{fa-asterisk}")
+        "Photoshoot" in name -> listOf("{fa-camera}")
+        "Supersponsor Event" in name -> listOf("{fa-diamond}")
+        else -> emptyList()
+    }
+}
 
 /**
  * Event view recycler to hold the viewpager items
+ * TODO: Refactor the everliving fuck out of this shitty software
  */
-class EventRecyclerFragment(val filterStrategy: IEventFilter, var filterVal: Any = Unit) : Fragment(), ContentAPI {
+class EventRecyclerFragment() : Fragment(), ContentAPI, HasDb, AnkoLogger {
+    override val db by lazyLocateDb()
 
-    constructor() : this(AnyEventFilter(), Unit) {
+    val ui by lazy { EventListView() }
+    val updateReceiver by lazy {
+        context.localReceiver(DataChanged.DATACHANGED) {
+            dataUpdated()
+        }
     }
+
+    lateinit var eventList: EventList
+    var title = ""
+    var scrolling = true
+    var daysInsteadOfGlyphs = false
+    var effectiveEvents = emptyList<EventRecord>()
+
+    constructor(eventList: EventList, title: String = "", scrolling: Boolean = true, daysInsteadOfGlyphs: Boolean = false) : this() {
+        info { "Constructing event recycler $title" }
+        this.eventList = eventList
+        this.title = title
+        this.scrolling = scrolling
+        this.daysInsteadOfGlyphs = daysInsteadOfGlyphs
+    }
+
 
     // Event view holder finds and memorizes the views in an event card
     inner class EventViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        val eventImage by view(ImageView::class.java)
-        val eventTitle by view(TextView::class.java)
-        val eventStartTime by view(TextView::class.java)
-        val eventEndTime by view(TextView::class.java)
-        val eventRoom by view(TextView::class.java)
-        val eventCard by view(LinearLayout::class.java)
+        val eventSeparator: View by view()
+        val eventImage: ImageView by view()
+        val eventTitle: TextView by view()
+        val eventGlyph: TextView by view()
+        val eventGlyphOverflow: TextView by view()
+        val eventStartTime: TextView by view()
+        val eventEndTime: TextView by view()
+        val eventRoom: TextView by view()
+        val eventCard: LinearLayout by view("layout") // TODO Layout mismatch
+        val layout: LinearLayout by view()
     }
 
     inner class DataAdapter : RecyclerView.Adapter<EventViewHolder>() {
-        override fun onCreateViewHolder(parent: ViewGroup, pos: Int) =
-                EventViewHolder(LayoutInflater
-                        .from(parent.context)
-                        .inflate(R.layout.fragment_event_card, parent, false))
+        override fun onCreateViewHolder(parent: ViewGroup, pos: Int): EventViewHolder =
+                EventViewHolder(SingleEventUi()
+                        .createView(AnkoContext.createReusable(activity.applicationContext, parent)))
 
         override fun getItemCount() =
                 effectiveEvents.size
 
+        private fun EventViewHolder.setGlyphs(glyphs: Sequence<String>) {
+            val glyphList = glyphs.toList()
+
+            when (glyphList.size) {
+                0 -> {
+                    eventGlyph.text = null
+                    eventGlyphOverflow.text = null
+                }
+                1 -> {
+                    eventGlyph.text = glyphList[0]
+                    eventGlyphOverflow.text = null
+                }
+                2 -> {
+                    eventGlyph.text = "${glyphList[0]} ${glyphList[1]}"
+                    eventGlyphOverflow.text = null
+                }
+                3 -> {
+                    eventGlyph.text = "${glyphList[0]} ${glyphList[1]}"
+                    eventGlyphOverflow.text = glyphList[2]
+                }
+                else -> {
+                    eventGlyph.text = "${glyphList[0]} ${glyphList[1]}"
+                    eventGlyphOverflow.text = "${glyphList[2]} ${glyphList[3]}"
+                }
+            }
+        }
+
         override fun onBindViewHolder(holder: EventViewHolder, pos: Int) {
+
             // Get the event for the position
             val event = effectiveEvents[pos]
 
-            val conflicting = if (remoteConfig.showConflictingEvents) database.eventIsConflicting(event) else false
-
-            val favourite = database.favoritedDb[event.id] != null
-
-            val builder = SpannableStringBuilder()
-
-            var titleText = Formatter.eventTitle(event)
-
-            if (conflicting || favourite && remoteConfig.showEventGlyphs == true) {
-                if (conflicting) {
-                    builder.append(" ")
-                    builder.setSpan(ImageSpan(activity, R.drawable.icon_attention_small), builder.length - 1, builder.length, 0)
-                    builder.append(" ")
-                }
-                if (favourite) {
-                    builder.append(" ")
-                    builder.setSpan(ImageSpan(activity, R.drawable.icon_like_filled_small), builder.length - 1, builder.length, 0)
-                    builder.append(" ")
-                }
-            }
-
-            builder.append(titleText)
-
-            // Assign the properties of the view
-            holder.eventTitle.text = builder
-
-            if (database.eventIsHappening(event, DateTime.now())) {
-                // It's happening now
-                holder.eventStartTime.text = "NOW"
-            } else if (database.eventStart(event).isBeforeNow) {
-                // It's already happened
-                holder.eventStartTime.text = "DONE"
-            } else if (database.eventIsUpcoming(event, DateTime.now(), 30)) {
-                // It's upcoming, so we give a timer
-                val countdown = database.eventStart(event).minus(DateTime.now().millis).millis / 1000 / 60
-                holder.eventStartTime.text = "IN $countdown MIN"
-            } else if (filterStrategy is AnyFavoritedEventFilter) {
-                holder.eventStartTime.text = Formatter.shortTime(event.startTime, database.eventDay(event))
+            if (pos > 0) {
+                val eventBefore = effectiveEvents[pos - 1]
+                if (eventBefore.startTime != event.startTime)
+                    holder.eventSeparator.visibility = View.VISIBLE
+                else
+                    holder.eventSeparator.visibility = View.GONE
             } else {
-                holder.eventStartTime.text = Formatter.shortTime(event.startTime)
+                holder.eventSeparator.visibility = View.GONE
             }
 
-            holder.eventEndTime.text = "until ${Formatter.shortTime(event.endTime)}"
-            holder.eventRoom.text = Formatter.roomFull(database.eventConferenceRoomDb[event.conferenceRoomId]!!)
+            val isFavorite = event.id in faves
+            val isDeviatingFromConBook = event.isDeviatingFromConBook
+
+            holder.setGlyphs(buildSequence {
+                yieldAll(glyphFor(event))
+                if (isFavorite) yield("{fa-heart}")
+                if (isDeviatingFromConBook) yield("{fa-pencil}")
+            })
+
+            if (daysInsteadOfGlyphs) holder.eventGlyphOverflow.text = db.eventStart(event).dayOfWeek().asShortText
+
+            holder.eventTitle.text = event.fullTitle()
+
+            val glyphEnd = "{fa-caret-right}"
+
+            when {
+                eventIsHappening(event, DateTime.now()) -> { // It's happening now
+                    holder.eventStartTime.text = "now"
+                }
+                eventStart(event).isBeforeNow -> // It's already happened
+                    holder.eventStartTime.text = "done"
+                eventIsUpcoming(event, DateTime.now(), 30) -> { //it's happening in 30 minutes
+                    // It's upcoming, so we give a timer
+                    val countdown = Minutes.minutesBetween(DateTime.now(), eventStart(event)).minutes
+                    holder.eventStartTime.text = "${countdown}min"
+                }
+                else -> {
+                    holder.eventStartTime.text = event.startTimeString()
+                }
+            }
+
+            holder.eventEndTime.text = "$glyphEnd ${event.endTimeString()}"
+            holder.eventRoom.text = Formatter.roomFull(event[toRoom]!!)
 
             // Load image
-            imageService.load(database.imageDb[event.imageId], holder.eventImage)
 
-            holder.itemView.isClickable = true
+            val image = db.images[event.bannerImageId]
+            imageService.load(image, holder.eventImage)
 
             // Assign the on-click action
             holder.itemView.setOnClickListener {
+                logd { "Short event click" }
                 applyOnRoot { navigateToEvent(event) }
-                vibrator.short().let { true }
             }
             holder.itemView.setOnLongClickListener {
-                EventDialog(event).show(activity.supportFragmentManager, "Kek")
-                vibrator.long().let { true }
-            }
-
-            // Colour the event cards according to if they've already occured, are ocurring or are favourited
-            if (database.eventIsHappening(event, DateTime.now())) {
-                // Event is happening, so we colour it light accent
-                holder.eventCard.setBackgroundColor(getColor(context, R.color.accentLighter))
-            } else if (database.favoritedDb[event.id] != null) {
-                // Event is in favourites, thus it is coloured in primary
-                holder.eventCard.setBackgroundColor(getColor(context, R.color.primaryLighter))
-            } else if (database.eventEnd(event).isBeforeNow) {
-                // Event end is before the current time, so it has already occurred thus it is gray
-                holder.eventCard.setBackgroundColor(getColor(context, R.color.backgroundGrey))
-            } else if (conflicting) {
-                holder.eventCard.setBackgroundColor(getColor(context, R.color.alert))
-            } else {
-                holder.eventCard.setBackgroundColor(getColor(context, R.color.cardview_light_background))
+                eventDialog(context, event, db)
+                true
             }
         }
     }
 
-    val events by view(RecyclerView::class.java)
-    val progress by view(ProgressBar::class.java)
-
-    var effectiveEvents = emptyList<EventEntry>()
-
-    val eventsTitle by view(TextView::class.java)
-
-    val database: Database get() = letRoot { it.database }!!
-
-    val remoteConfig: RemoteConfig get() = letRoot { it.remotePreferences }!!
-
-    val vibrator by lazy { TouchVibrator(context) }
-
-    lateinit var updateReceiver: EmbeddedLocalBroadcastReceiver
-
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? =
-            inflater.inflate(R.layout.fragment_events, container, false)
+            if (container == null)
+                null
+            else
+                ui.createView(AnkoContext.create(container.context.applicationContext, container))
 
     override fun onViewCreated(view: View?, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        setTitle()
+        info { "Filling in view" }
 
         // Configure the recycler
-        events.setHasFixedSize(true)
-        events.adapter = DataAdapter()
+        configureList()
+
+        configureTitle()
 
         // Filter the data
-        dataUpdatedLong()
-
-        if (filterStrategy.scrolling)
-            events.layoutManager = LinearLayoutManager(activity)
-        else
-            events.layoutManager = NonScrollingLinearLayout(activity)
-
-        events.itemAnimator = DefaultItemAnimator()
-
-        updateReceiver = context.localReceiver(FragmentViewEvent.EVENT_STATUS_CHANGED) {
-            events.adapter.notifyDataSetChanged()
-        }
+        Observable.just(db.events.items)
+                .subscribeOn(AndroidSchedulers.mainThread())
+                .subscribe { dataUpdated() }
 
         updateReceiver.register()
     }
 
-    private fun setTitle() {
-        if (filterStrategy.getTitle() == "")
-            eventsTitle.visibility = View.GONE
-        else
-            eventsTitle.text = filterStrategy.getTitle()
+    private fun configureTitle() {
+        info { "Configuring title" }
+
+        ui.title.text = this.title
+
+        ui.title.visibility = if (effectiveEvents.any() && this.title.isNotEmpty()) View.VISIBLE else View.GONE
+        ui.bigLayout.visibility = if (effectiveEvents.any()) View.VISIBLE else View.GONE
+    }
+
+    private fun configureList() {
+        info { "Configuring recycler" }
+        ui.eventList.setHasFixedSize(true)
+        ui.eventList.adapter = DataAdapter()
+        ui.eventList.layoutManager = if (scrolling) LinearLayoutManager(activity) else NonScrollingLinearLayout(activity)
+        ui.eventList.itemAnimator = DefaultItemAnimator()
     }
 
     override fun onPause() {
@@ -207,58 +283,151 @@ class EventRecyclerFragment(val filterStrategy: IEventFilter, var filterVal: Any
     }
 
     override fun dataUpdated() {
-        effectiveEvents = filterStrategy.filter(database, filterVal).toList()
-        events.adapter.notifyDataSetChanged()
+        info { "Data was updated, redoing UI" }
+        promiseOnUi {
+            info { "Hiding critical UI elements" }
+            ui.eventList.visibility = View.GONE
+            ui.title.visibility = View.GONE
+            ui.loading.visibility = View.VISIBLE
+        } then {
+            info { "Refiltering data" }
+            effectiveEvents = eventList.applyFilters()
+        } successUi {
+            info { "Revealing new data" }
+            ui.eventList.adapter.notifyDataSetChanged()
+            ui.loading.visibility = View.GONE
+            ui.eventList.visibility = View.VISIBLE
 
-        if (effectiveEvents.isEmpty()) {
-            eventsTitle.visibility = View.GONE
-            events.visibility = View.GONE
-        } else {
-            setTitle()
-            events.visibility = View.VISIBLE
+            configureTitle()
+        } failUi {
+            ui.loading.visibility = View.GONE
+            ui.eventList.visibility = View.VISIBLE
+
+            configureTitle()
         }
     }
+}
 
-    fun dataUpdatedLong() {
-        object : AsyncTask<Unit, Unit, Iterable<EventEntry>>() {
-            override fun onPreExecute() {
-                logd { "Starting long data update" }
-                try {
-                    progress.visibility = View.VISIBLE
-                    events.visibility = View.GONE
-                } catch (throwable: Throwable) {
-                    Analytics.exception(throwable)
+class SingleEventUi : AnkoComponent<ViewGroup> {
+    override fun createView(ui: AnkoContext<ViewGroup>) = with(ui) {
+        verticalLayout {
+            isClickable = true
+            isLongClickable = true
+
+            lparams(matchParent, wrapContent)
+            backgroundResource = R.color.cardview_light_background
+
+            linearLayout {
+                id = R.id.eventSeparator
+                lparams(matchParent, wrapContent)
+                verticalPadding = dip(10)
+
+                linearLayout {
+                    lparams(matchParent, matchParent)
+                    setBackgroundResource(R.drawable.wave_separator)
                 }
             }
 
-            override fun doInBackground(vararg params: Unit?): Iterable<EventEntry>? {
-                try {
-                    return filterStrategy.filter(database, filterVal)
-                } catch(throwable: Throwable) {
-                    Analytics.exception(throwable)
-                    return emptyList()
-                }
-            }
+            verticalLayout {
+                id = R.id.layout
 
-            override fun onPostExecute(result: Iterable<EventEntry>) {
-                logd { "Completed long data update" }
-                try {
-                    effectiveEvents = result.toList()
-                    events.adapter.notifyDataSetChanged()
+                verticalPadding = dip(3)
 
-                    progress.visibility = View.GONE
+                tableLayout {
+                    setColumnStretchable(2, true)
+                    horizontalPadding = dip(3)
 
-                    if (effectiveEvents.isEmpty()) {
-                        eventsTitle.visibility = View.GONE
-                        events.visibility = View.GONE
-                    } else {
-                        setTitle()
-                        events.visibility = View.VISIBLE
+                    lparams(matchParent, wrapContent)
+
+
+                    tableRow {
+                        textView {
+                            id = R.id.eventStartTime
+                            minMaxWidth = fw(15.percent())
+                            gravity = Gravity.CENTER_VERTICAL
+                            compatAppearance = android.R.style.TextAppearance_Medium
+                            singleLine = true
+                        }
+
+                        fontAwesomeView {
+                            lparams(matchParent, matchParent)
+                            id = R.id.eventGlyph
+                            minMaxWidth = fw(15.percent())
+                            horizontalPadding = dip(5)
+                            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                            compatAppearance = android.R.style.TextAppearance_Small
+                            singleLine = true
+                        }
+
+                        textView {
+                            id = R.id.eventTitle
+                            gravity = Gravity.CENTER_VERTICAL
+                            compatAppearance = android.R.style.TextAppearance_Medium
+                            singleLine = true
+                        }
                     }
-                } catch (throwable: Throwable) {
-                    Analytics.exception(throwable)
+
+                    tableRow {
+                        fontAwesomeView {
+                            id = R.id.eventEndTime
+                            minMaxWidth = fw(15.percent())
+                            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                            compatAppearance = android.R.style.TextAppearance_Small
+                            singleLine = true
+                        }
+
+                        fontAwesomeView {
+                            lparams(matchParent, matchParent)
+                            id = R.id.eventGlyphOverflow
+                            minMaxWidth = fw(15.percent())
+                            horizontalPadding = dip(5)
+                            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                            compatAppearance = android.R.style.TextAppearance_Small
+                            singleLine = true
+                        }
+
+                        textView {
+                            id = R.id.eventRoom
+                            gravity = Gravity.CENTER_VERTICAL
+                            compatAppearance = android.R.style.TextAppearance_Small
+                            singleLine = true
+                        }
+                    }
+                }
+
+                imageView {
+                    lparams(matchParent, wrapContent)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    id = R.id.eventImage
                 }
             }
-        }.execute()
+        }
+    }
+}
+
+class EventListView : AnkoComponent<ViewGroup> {
+    lateinit var title: TextView
+    lateinit var loading: ProgressBar
+    lateinit var eventList: RecyclerView
+    lateinit var bigLayout: LinearLayout
+
+    override fun createView(ui: AnkoContext<ViewGroup>) = with(ui) {
+        bigLayout = verticalLayout {
+            lparams(matchParent, matchParent) {
+                padding = dip(15)
+                setMargins(0, dip(15), 0, 0)
+            }
+            backgroundResource = R.color.cardview_light_background
+
+            title = textView("").lparams(matchParent, wrapContent) {
+                setMargins(0, 0, 0, dip(10))
+            }
+
+            loading = progressBar().lparams(matchParent, wrapContent)
+
+            eventList = recycler {
+            }.lparams(matchParent, matchParent)
+        }
+        bigLayout
     }
 }

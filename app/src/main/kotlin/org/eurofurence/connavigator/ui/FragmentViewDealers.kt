@@ -5,79 +5,103 @@ import android.support.v4.app.Fragment
 import android.support.v7.widget.DefaultItemAnimator
 import android.support.v7.widget.LinearLayoutManager
 import android.support.v7.widget.RecyclerView
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
-import io.swagger.client.model.Dealer
+import com.google.firebase.perf.metrics.AddTrace
+import com.pawegio.kandroid.textWatcher
+import io.swagger.client.model.DealerRecord
 import org.eurofurence.connavigator.R
-import org.eurofurence.connavigator.database.Database
+import org.eurofurence.connavigator.database.HasDb
+import org.eurofurence.connavigator.database.lazyLocateDb
 import org.eurofurence.connavigator.tracking.Analytics
 import org.eurofurence.connavigator.ui.adapter.DealerRecyclerAdapter
 import org.eurofurence.connavigator.ui.communication.ContentAPI
-import org.eurofurence.connavigator.util.delegators.view
 import org.eurofurence.connavigator.util.extensions.applyOnRoot
-import org.eurofurence.connavigator.util.extensions.letRoot
+import org.eurofurence.connavigator.util.extensions.recycler
+import org.jetbrains.anko.*
 
 /**
  * Created by David on 15-5-2016.
  */
-class FragmentViewDealers : Fragment(), TextWatcher, ContentAPI {
-    override fun afterTextChanged(s: Editable?) {
-    }
+class FragmentViewDealers : Fragment(), ContentAPI, HasDb, AnkoLogger {
+    override val db by lazyLocateDb()
 
-    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
-        // pass
-    }
+    val ui by lazy { DealersUi() }
 
-    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-        val query = dealersSearch.text
-
-        effectiveDealers = database.dealerDb.items.filter { if (it.displayName != "") it.displayName.contains(query, true) else it.attendeeNickname.contains(query, true) }
-
-        dealersRecycler.adapter = DealerRecyclerAdapter(sortDealers(effectiveDealers), database, this)
-
-        dealersRecycler.adapter.notifyDataSetChanged()
-    }
-
-    val database: Database get() = letRoot { it.database }!!
-    val dealersRecycler by view(RecyclerView::class.java)
-    val dealersSearch by view(EditText::class.java)
-    val dealersSearchLayout by view(LinearLayout::class.java)
-
-    var effectiveDealers = emptyList<Dealer>()
+    var effectiveDealers = emptyList<DealerRecord>()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?) =
-            inflater.inflate(R.layout.fview_dealers, container, false)
+            ui.createView(AnkoContext.create(container!!.context.applicationContext, container))
 
     override fun onViewCreated(view: View?, savedInstanceState: Bundle?) {
-        Analytics.screen("Dealers Listing")
+        applyOnRoot { changeTitle("Dealers") }
 
-        applyOnRoot { changeTitle("Dealers Den") }
-        dealersSearch.setSingleLine()
-        effectiveDealers = sortDealers(database.dealerDb.items)
+        effectiveDealers = sortDealers(dealers.items)
 
-        dealersRecycler.adapter = DealerRecyclerAdapter(effectiveDealers, database, this)
-        dealersRecycler.layoutManager = LinearLayoutManager(activity)
-        dealersRecycler.itemAnimator = DefaultItemAnimator()
+        ui.dealerList.adapter = DealerRecyclerAdapter(effectiveDealers, db, this)
+        ui.dealerList.layoutManager = LinearLayoutManager(activity)
+        ui.dealerList.itemAnimator = DefaultItemAnimator()
 
-        dealersSearch.addTextChangedListener(this)
+        ui.search.textWatcher {
+            afterTextChanged { text -> search(text.toString()) }
+        }
     }
 
-    fun sortDealers(dealers: Iterable<Dealer>): List<Dealer> = dealers.sortedBy { (if (it.displayName != "") it.displayName else it.attendeeNickname).toLowerCase() }
+    @AddTrace(name = "FragmentViewDealers:search", enabled = true)
+    fun search(query: String) {
+        info { "Searching dealers for $query" }
+
+        effectiveDealers = db.dealers.items.filter { it.displayName.contains(query, true) or it.attendeeNickname.contains(query, true) }
+        ui.dealerList.adapter = DealerRecyclerAdapter(sortDealers(effectiveDealers), db, this)
+
+        ui.dealerList.adapter.notifyDataSetChanged()
+    }
+
+    fun sortDealers(dealers: Iterable<DealerRecord>): List<DealerRecord> =
+            dealers.sortedBy { (if (it.displayName != "") it.displayName else it.attendeeNickname).toLowerCase() }
 
     override fun onSearchButtonClick() {
-        if (dealersSearchLayout.visibility == View.GONE) {
-            dealersSearchLayout.visibility = View.VISIBLE
+        if (ui.searchLayout.visibility == View.GONE) {
+            info { "Showing search bar" }
+            ui.searchLayout.visibility = View.VISIBLE
         } else {
-            dealersSearchLayout.visibility = View.GONE
+            info { "Hiding search bar" }
+            ui.searchLayout.visibility = View.GONE
         }
     }
 
     override fun dataUpdated() {
-        dealersRecycler.adapter = DealerRecyclerAdapter(sortDealers(database.dealerDb.items), database, this)
+        ui.dealerList.adapter = DealerRecyclerAdapter(sortDealers(dealers.items), db, this)
+    }
+}
+
+class DealersUi : AnkoComponent<ViewGroup> {
+    lateinit var dealerList: RecyclerView
+    lateinit var search: EditText
+
+    lateinit var searchLayout: LinearLayout
+
+    override fun createView(ui: AnkoContext<ViewGroup>) = with(ui) {
+        verticalLayout {
+            lparams(matchParent, matchParent)
+            backgroundResource = R.color.cardview_light_background
+
+            searchLayout = verticalLayout {
+                lparams(matchParent, wrapContent)
+                visibility = View.GONE
+                search = editText {
+                    lparams(matchParent, wrapContent)
+                    singleLine = true
+                    padding = dip(15)
+                }
+            }
+
+            dealerList = recycler {
+                lparams(matchParent, matchParent)
+            }
+        }
     }
 }

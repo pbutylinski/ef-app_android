@@ -3,10 +3,9 @@ package io.swagger.client;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
-import io.swagger.client.model.*;
-
 import java.lang.reflect.Type;
 import java.util.List;
+import io.swagger.client.model.*;
 
 public class JsonUtil {
   public static GsonBuilder gsonBuilder;
@@ -36,68 +35,192 @@ public class JsonUtil {
   public static Type getListTypeForDeserialization(Class cls) {
     String className = cls.getSimpleName();
     
-    if ("Announcement".equalsIgnoreCase(className)) {
-      return new TypeToken<List<Announcement>>(){}.getType();
+    if ("AggregatedDeltaResponse".equalsIgnoreCase(className)) {
+      return new TypeToken<List<AggregatedDeltaResponse>>(){}.getType();
     }
     
-    if ("Dealer".equalsIgnoreCase(className)) {
-      return new TypeToken<List<Dealer>>(){}.getType();
+    if ("AnnouncementRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<AnnouncementRecord>>(){}.getType();
     }
     
-    if ("Endpoint".equalsIgnoreCase(className)) {
-      return new TypeToken<List<Endpoint>>(){}.getType();
+    if ("ApiErrorResult".equalsIgnoreCase(className)) {
+      return new TypeToken<List<ApiErrorResult>>(){}.getType();
     }
     
-    if ("EndpointConfiguration".equalsIgnoreCase(className)) {
-      return new TypeToken<List<EndpointConfiguration>>(){}.getType();
+    if ("ApiSafeResult".equalsIgnoreCase(className)) {
+      return new TypeToken<List<ApiSafeResult>>(){}.getType();
     }
     
-    if ("EndpointEntity".equalsIgnoreCase(className)) {
-      return new TypeToken<List<EndpointEntity>>(){}.getType();
+    if ("ApiSafeResultCollectTokenResponse".equalsIgnoreCase(className)) {
+      return new TypeToken<List<ApiSafeResultCollectTokenResponse>>(){}.getType();
     }
     
-    if ("EntityBase".equalsIgnoreCase(className)) {
-      return new TypeToken<List<EntityBase>>(){}.getType();
+    if ("AuthenticationResponse".equalsIgnoreCase(className)) {
+      return new TypeToken<List<AuthenticationResponse>>(){}.getType();
     }
     
-    if ("EventConferenceDay".equalsIgnoreCase(className)) {
-      return new TypeToken<List<EventConferenceDay>>(){}.getType();
+    if ("BadgeInfo".equalsIgnoreCase(className)) {
+      return new TypeToken<List<BadgeInfo>>(){}.getType();
     }
     
-    if ("EventConferenceRoom".equalsIgnoreCase(className)) {
-      return new TypeToken<List<EventConferenceRoom>>(){}.getType();
+    if ("CollectTokenResponse".equalsIgnoreCase(className)) {
+      return new TypeToken<List<CollectTokenResponse>>(){}.getType();
     }
     
-    if ("EventConferenceTrack".equalsIgnoreCase(className)) {
-      return new TypeToken<List<EventConferenceTrack>>(){}.getType();
+    if ("DealerRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<DealerRecord>>(){}.getType();
     }
     
-    if ("EventEntry".equalsIgnoreCase(className)) {
-      return new TypeToken<List<EventEntry>>(){}.getType();
+    if ("DeltaResponseAnnouncementRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<DeltaResponseAnnouncementRecord>>(){}.getType();
     }
     
-    if ("Image".equalsIgnoreCase(className)) {
-      return new TypeToken<List<Image>>(){}.getType();
+    if ("DeltaResponseDealerRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<DeltaResponseDealerRecord>>(){}.getType();
     }
     
-    if ("Info".equalsIgnoreCase(className)) {
-      return new TypeToken<List<Info>>(){}.getType();
+    if ("DeltaResponseEventConferenceDayRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<DeltaResponseEventConferenceDayRecord>>(){}.getType();
     }
     
-    if ("InfoGroup".equalsIgnoreCase(className)) {
-      return new TypeToken<List<InfoGroup>>(){}.getType();
+    if ("DeltaResponseEventConferenceRoomRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<DeltaResponseEventConferenceRoomRecord>>(){}.getType();
     }
     
-    if ("MapEntity".equalsIgnoreCase(className)) {
-      return new TypeToken<List<MapEntity>>(){}.getType();
+    if ("DeltaResponseEventConferenceTrackRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<DeltaResponseEventConferenceTrackRecord>>(){}.getType();
     }
     
-    if ("MapEntry".equalsIgnoreCase(className)) {
-      return new TypeToken<List<MapEntry>>(){}.getType();
+    if ("DeltaResponseEventRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<DeltaResponseEventRecord>>(){}.getType();
     }
     
-    if ("NamedUrl".equalsIgnoreCase(className)) {
-      return new TypeToken<List<NamedUrl>>(){}.getType();
+    if ("DeltaResponseImageRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<DeltaResponseImageRecord>>(){}.getType();
+    }
+    
+    if ("DeltaResponseKnowledgeEntryRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<DeltaResponseKnowledgeEntryRecord>>(){}.getType();
+    }
+    
+    if ("DeltaResponseKnowledgeGroupRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<DeltaResponseKnowledgeGroupRecord>>(){}.getType();
+    }
+    
+    if ("DeltaResponseMapRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<DeltaResponseMapRecord>>(){}.getType();
+    }
+    
+    if ("EventConferenceDayRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<EventConferenceDayRecord>>(){}.getType();
+    }
+    
+    if ("EventConferenceRoomRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<EventConferenceRoomRecord>>(){}.getType();
+    }
+    
+    if ("EventConferenceTrackRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<EventConferenceTrackRecord>>(){}.getType();
+    }
+    
+    if ("EventFeedbackRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<EventFeedbackRecord>>(){}.getType();
+    }
+    
+    if ("EventRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<EventRecord>>(){}.getType();
+    }
+    
+    if ("FursuitBadgeRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<FursuitBadgeRecord>>(){}.getType();
+    }
+    
+    if ("FursuitBadgeRegistration".equalsIgnoreCase(className)) {
+      return new TypeToken<List<FursuitBadgeRegistration>>(){}.getType();
+    }
+    
+    if ("FursuitParticipationInfo".equalsIgnoreCase(className)) {
+      return new TypeToken<List<FursuitParticipationInfo>>(){}.getType();
+    }
+    
+    if ("FursuitParticipationRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<FursuitParticipationRecord>>(){}.getType();
+    }
+    
+    if ("FursuitScoreboardEntry".equalsIgnoreCase(className)) {
+      return new TypeToken<List<FursuitScoreboardEntry>>(){}.getType();
+    }
+    
+    if ("ImageRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<ImageRecord>>(){}.getType();
+    }
+    
+    if ("KnowledgeEntryRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<KnowledgeEntryRecord>>(){}.getType();
+    }
+    
+    if ("KnowledgeGroupRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<KnowledgeGroupRecord>>(){}.getType();
+    }
+    
+    if ("LinkFragment".equalsIgnoreCase(className)) {
+      return new TypeToken<List<LinkFragment>>(){}.getType();
+    }
+    
+    if ("MapEntryRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<MapEntryRecord>>(){}.getType();
+    }
+    
+    if ("MapRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<MapRecord>>(){}.getType();
+    }
+    
+    if ("PlatformTagInfo".equalsIgnoreCase(className)) {
+      return new TypeToken<List<PlatformTagInfo>>(){}.getType();
+    }
+    
+    if ("PlayerCollectionEntry".equalsIgnoreCase(className)) {
+      return new TypeToken<List<PlayerCollectionEntry>>(){}.getType();
+    }
+    
+    if ("PlayerParticipationInfo".equalsIgnoreCase(className)) {
+      return new TypeToken<List<PlayerParticipationInfo>>(){}.getType();
+    }
+    
+    if ("PlayerScoreboardEntry".equalsIgnoreCase(className)) {
+      return new TypeToken<List<PlayerScoreboardEntry>>(){}.getType();
+    }
+    
+    if ("PostFcmDeviceRegistrationRequest".equalsIgnoreCase(className)) {
+      return new TypeToken<List<PostFcmDeviceRegistrationRequest>>(){}.getType();
+    }
+    
+    if ("PostWnsChannelRegistrationRequest".equalsIgnoreCase(className)) {
+      return new TypeToken<List<PostWnsChannelRegistrationRequest>>(){}.getType();
+    }
+    
+    if ("PrivateMessageRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<List<PrivateMessageRecord>>(){}.getType();
+    }
+    
+    if ("PrivateMessageStatus".equalsIgnoreCase(className)) {
+      return new TypeToken<List<PrivateMessageStatus>>(){}.getType();
+    }
+    
+    if ("PushNotificationChannelStatistics".equalsIgnoreCase(className)) {
+      return new TypeToken<List<PushNotificationChannelStatistics>>(){}.getType();
+    }
+    
+    if ("RegSysAuthenticationRequest".equalsIgnoreCase(className)) {
+      return new TypeToken<List<RegSysAuthenticationRequest>>(){}.getType();
+    }
+    
+    if ("SendPrivateMessageRequest".equalsIgnoreCase(className)) {
+      return new TypeToken<List<SendPrivateMessageRequest>>(){}.getType();
+    }
+    
+    if ("ToastTest".equalsIgnoreCase(className)) {
+      return new TypeToken<List<ToastTest>>(){}.getType();
     }
     
     return new TypeToken<List<Object>>(){}.getType();
@@ -106,71 +229,195 @@ public class JsonUtil {
   public static Type getTypeForDeserialization(Class cls) {
     String className = cls.getSimpleName();
     
-    if ("Announcement".equalsIgnoreCase(className)) {
-      return new TypeToken<Announcement>(){}.getType();
+    if ("AggregatedDeltaResponse".equalsIgnoreCase(className)) {
+      return new TypeToken<AggregatedDeltaResponse>(){}.getType();
     }
     
-    if ("Dealer".equalsIgnoreCase(className)) {
-      return new TypeToken<Dealer>(){}.getType();
+    if ("AnnouncementRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<AnnouncementRecord>(){}.getType();
     }
     
-    if ("Endpoint".equalsIgnoreCase(className)) {
-      return new TypeToken<Endpoint>(){}.getType();
+    if ("ApiErrorResult".equalsIgnoreCase(className)) {
+      return new TypeToken<ApiErrorResult>(){}.getType();
     }
     
-    if ("EndpointConfiguration".equalsIgnoreCase(className)) {
-      return new TypeToken<EndpointConfiguration>(){}.getType();
+    if ("ApiSafeResult".equalsIgnoreCase(className)) {
+      return new TypeToken<ApiSafeResult>(){}.getType();
     }
     
-    if ("EndpointEntity".equalsIgnoreCase(className)) {
-      return new TypeToken<EndpointEntity>(){}.getType();
+    if ("ApiSafeResultCollectTokenResponse".equalsIgnoreCase(className)) {
+      return new TypeToken<ApiSafeResultCollectTokenResponse>(){}.getType();
     }
     
-    if ("EntityBase".equalsIgnoreCase(className)) {
-      return new TypeToken<EntityBase>(){}.getType();
+    if ("AuthenticationResponse".equalsIgnoreCase(className)) {
+      return new TypeToken<AuthenticationResponse>(){}.getType();
     }
     
-    if ("EventConferenceDay".equalsIgnoreCase(className)) {
-      return new TypeToken<EventConferenceDay>(){}.getType();
+    if ("BadgeInfo".equalsIgnoreCase(className)) {
+      return new TypeToken<BadgeInfo>(){}.getType();
     }
     
-    if ("EventConferenceRoom".equalsIgnoreCase(className)) {
-      return new TypeToken<EventConferenceRoom>(){}.getType();
+    if ("CollectTokenResponse".equalsIgnoreCase(className)) {
+      return new TypeToken<CollectTokenResponse>(){}.getType();
     }
     
-    if ("EventConferenceTrack".equalsIgnoreCase(className)) {
-      return new TypeToken<EventConferenceTrack>(){}.getType();
+    if ("DealerRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<DealerRecord>(){}.getType();
     }
     
-    if ("EventEntry".equalsIgnoreCase(className)) {
-      return new TypeToken<EventEntry>(){}.getType();
+    if ("DeltaResponseAnnouncementRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<DeltaResponseAnnouncementRecord>(){}.getType();
     }
     
-    if ("Image".equalsIgnoreCase(className)) {
-      return new TypeToken<Image>(){}.getType();
+    if ("DeltaResponseDealerRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<DeltaResponseDealerRecord>(){}.getType();
     }
     
-    if ("Info".equalsIgnoreCase(className)) {
-      return new TypeToken<Info>(){}.getType();
+    if ("DeltaResponseEventConferenceDayRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<DeltaResponseEventConferenceDayRecord>(){}.getType();
     }
     
-    if ("InfoGroup".equalsIgnoreCase(className)) {
-      return new TypeToken<InfoGroup>(){}.getType();
+    if ("DeltaResponseEventConferenceRoomRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<DeltaResponseEventConferenceRoomRecord>(){}.getType();
     }
     
-    if ("MapEntity".equalsIgnoreCase(className)) {
-      return new TypeToken<MapEntity>(){}.getType();
+    if ("DeltaResponseEventConferenceTrackRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<DeltaResponseEventConferenceTrackRecord>(){}.getType();
     }
     
-    if ("MapEntry".equalsIgnoreCase(className)) {
-      return new TypeToken<MapEntry>(){}.getType();
+    if ("DeltaResponseEventRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<DeltaResponseEventRecord>(){}.getType();
     }
     
-    if ("NamedUrl".equalsIgnoreCase(className)) {
-      return new TypeToken<NamedUrl>(){}.getType();
+    if ("DeltaResponseImageRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<DeltaResponseImageRecord>(){}.getType();
+    }
+    
+    if ("DeltaResponseKnowledgeEntryRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<DeltaResponseKnowledgeEntryRecord>(){}.getType();
+    }
+    
+    if ("DeltaResponseKnowledgeGroupRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<DeltaResponseKnowledgeGroupRecord>(){}.getType();
+    }
+    
+    if ("DeltaResponseMapRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<DeltaResponseMapRecord>(){}.getType();
+    }
+    
+    if ("EventConferenceDayRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<EventConferenceDayRecord>(){}.getType();
+    }
+    
+    if ("EventConferenceRoomRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<EventConferenceRoomRecord>(){}.getType();
+    }
+    
+    if ("EventConferenceTrackRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<EventConferenceTrackRecord>(){}.getType();
+    }
+    
+    if ("EventFeedbackRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<EventFeedbackRecord>(){}.getType();
+    }
+    
+    if ("EventRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<EventRecord>(){}.getType();
+    }
+    
+    if ("FursuitBadgeRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<FursuitBadgeRecord>(){}.getType();
+    }
+    
+    if ("FursuitBadgeRegistration".equalsIgnoreCase(className)) {
+      return new TypeToken<FursuitBadgeRegistration>(){}.getType();
+    }
+    
+    if ("FursuitParticipationInfo".equalsIgnoreCase(className)) {
+      return new TypeToken<FursuitParticipationInfo>(){}.getType();
+    }
+    
+    if ("FursuitParticipationRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<FursuitParticipationRecord>(){}.getType();
+    }
+    
+    if ("FursuitScoreboardEntry".equalsIgnoreCase(className)) {
+      return new TypeToken<FursuitScoreboardEntry>(){}.getType();
+    }
+    
+    if ("ImageRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<ImageRecord>(){}.getType();
+    }
+    
+    if ("KnowledgeEntryRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<KnowledgeEntryRecord>(){}.getType();
+    }
+    
+    if ("KnowledgeGroupRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<KnowledgeGroupRecord>(){}.getType();
+    }
+    
+    if ("LinkFragment".equalsIgnoreCase(className)) {
+      return new TypeToken<LinkFragment>(){}.getType();
+    }
+    
+    if ("MapEntryRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<MapEntryRecord>(){}.getType();
+    }
+    
+    if ("MapRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<MapRecord>(){}.getType();
+    }
+    
+    if ("PlatformTagInfo".equalsIgnoreCase(className)) {
+      return new TypeToken<PlatformTagInfo>(){}.getType();
+    }
+    
+    if ("PlayerCollectionEntry".equalsIgnoreCase(className)) {
+      return new TypeToken<PlayerCollectionEntry>(){}.getType();
+    }
+    
+    if ("PlayerParticipationInfo".equalsIgnoreCase(className)) {
+      return new TypeToken<PlayerParticipationInfo>(){}.getType();
+    }
+    
+    if ("PlayerScoreboardEntry".equalsIgnoreCase(className)) {
+      return new TypeToken<PlayerScoreboardEntry>(){}.getType();
+    }
+    
+    if ("PostFcmDeviceRegistrationRequest".equalsIgnoreCase(className)) {
+      return new TypeToken<PostFcmDeviceRegistrationRequest>(){}.getType();
+    }
+    
+    if ("PostWnsChannelRegistrationRequest".equalsIgnoreCase(className)) {
+      return new TypeToken<PostWnsChannelRegistrationRequest>(){}.getType();
+    }
+    
+    if ("PrivateMessageRecord".equalsIgnoreCase(className)) {
+      return new TypeToken<PrivateMessageRecord>(){}.getType();
+    }
+    
+    if ("PrivateMessageStatus".equalsIgnoreCase(className)) {
+      return new TypeToken<PrivateMessageStatus>(){}.getType();
+    }
+    
+    if ("PushNotificationChannelStatistics".equalsIgnoreCase(className)) {
+      return new TypeToken<PushNotificationChannelStatistics>(){}.getType();
+    }
+    
+    if ("RegSysAuthenticationRequest".equalsIgnoreCase(className)) {
+      return new TypeToken<RegSysAuthenticationRequest>(){}.getType();
+    }
+    
+    if ("SendPrivateMessageRequest".equalsIgnoreCase(className)) {
+      return new TypeToken<SendPrivateMessageRequest>(){}.getType();
+    }
+    
+    if ("ToastTest".equalsIgnoreCase(className)) {
+      return new TypeToken<ToastTest>(){}.getType();
     }
     
     return new TypeToken<Object>(){}.getType();
   }
 
-}
+};

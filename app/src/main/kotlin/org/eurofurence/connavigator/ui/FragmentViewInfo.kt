@@ -1,7 +1,5 @@
 package org.eurofurence.connavigator.ui
 
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.support.v4.app.Fragment
 import android.view.LayoutInflater
@@ -11,75 +9,101 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import io.swagger.client.model.Info
+import com.github.chrisbanes.photoview.PhotoView
+import io.swagger.client.model.KnowledgeEntryRecord
 import org.eurofurence.connavigator.R
-import org.eurofurence.connavigator.database.Database
+import org.eurofurence.connavigator.database.HasDb
+import org.eurofurence.connavigator.database.lazyLocateDb
 import org.eurofurence.connavigator.net.imageService
 import org.eurofurence.connavigator.tracking.Analytics
 import org.eurofurence.connavigator.util.Formatter
-import org.eurofurence.connavigator.util.delegators.view
 import org.eurofurence.connavigator.util.extensions.*
-import java.util.*
+import org.jetbrains.anko.*
+import org.jetbrains.anko.support.v4.browse
+import us.feras.mdv.MarkdownView
 
 
 /**
  * Views an info based on an ID passed to the intent
  */
-class FragmentViewInfo() : Fragment() {
+class FragmentViewInfo() : Fragment(), HasDb {
+    override val db by lazyLocateDb()
+
+    val ui by lazy { InfoUi() }
+
     /**
      * Constructs the info view with an assigned bundle
      */
-    constructor(info: Info) : this() {
+    constructor(knowledgeEntry: KnowledgeEntryRecord) : this() {
         arguments = Bundle()
-        arguments.jsonObjects["info"] = info
+        arguments.jsonObjects["knowledgeEntry"] = knowledgeEntry
     }
 
-    // Views
-    val image by view(ImageView::class.java)
-    val title by view(TextView::class.java)
-    val text by view(TextView::class.java)
-    val layout by view(LinearLayout::class.java)
-
-    val database: Database get() = letRoot { it.database }!!
-
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?) =
-            inflater.inflate(R.layout.fview_info, container, false)
+        ui.createView(AnkoContext.create(context.applicationContext, container!!))
 
     override fun onViewCreated(view: View?, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        Analytics.screen("Info Specific")
-
-
         applyOnRoot { changeTitle("Information") }
         // Get info if it exists
-        if ("info" in arguments) {
-            val info = arguments.jsonObjects["info", Info::class.java]
+        if ("knowledgeEntry" in arguments) {
+            val knowledgeEntry: KnowledgeEntryRecord = arguments.jsonObjects["knowledgeEntry"]
 
-            Analytics.event(Analytics.Category.INFO, Analytics.Action.OPENED, info.title)
+            Analytics.event(Analytics.Category.INFO, Analytics.Action.OPENED, knowledgeEntry.title)
 
             // Set the properties of the view
-            title.text = info.title
-            text.text = Formatter.wikiToMarkdown(info.text)
-            image.scaleType = ImageView.ScaleType.CENTER_CROP
+            ui.title.text = knowledgeEntry.title
+            ui.text.loadMarkdown(knowledgeEntry.text.replace("\n", "<br/>"))
 
-            if (info.imageIds.isNotEmpty()) {
-                imageService.load(database.imageDb[UUID.fromString(info.imageIds.first())], image, showHide = false)
+            if (knowledgeEntry.imageIds != null && knowledgeEntry.imageIds.isNotEmpty()) {
+                imageService.load(db.images[knowledgeEntry.imageIds.first()], ui.image, showHide = false)
             } else {
-                image.visibility = View.GONE
+                ui.image.visibility = View.GONE
             }
 
-            for (url in info.urls) {
+            for (url in knowledgeEntry.links) {
                 val button = Button(context)
-                button.text = url.text
+                button.text = url.name
                 button.setOnClickListener {
-                    val target = if (url.target.contains("http")) url.target else "http://${url.target}"
-                    Analytics.event(Analytics.Category.INFO, Analytics.Action.LINK_CLICKED, target)
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)))
+                    Analytics.event(Analytics.Category.INFO, Analytics.Action.LINK_CLICKED, url.target)
+                    browse(url.target)
                 }
 
-                layout.addView(button)
+                ui.layout.addView(button)
             }
         }
     }
+}
+
+class InfoUi : AnkoComponent<ViewGroup> {
+    lateinit var layout: LinearLayout
+    lateinit var image: PhotoView
+    lateinit var title: TextView
+    lateinit var text: MarkdownView
+    override fun createView(ui: AnkoContext<ViewGroup>) = with(ui) {
+        scrollView {
+            lparams(matchParent, matchParent)
+            backgroundResource = R.color.cardview_light_background
+
+            layout = verticalLayout {
+                image = photoView {
+                    backgroundResource = R.drawable.image_fade
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                }.lparams(matchParent, wrapContent)
+
+                title = themedTextView(R.style.AppTheme_Header) {
+                    lparams(matchParent, wrapContent)
+                    setTextAppearance(ctx, android.R.style.TextAppearance_Large_Inverse)
+                }
+
+                text = markdownView {
+                    lparams(matchParent, wrapContent)
+                }.lparams{
+                    margin = dip(10)
+                }
+            }
+        }
+    }
+
 }

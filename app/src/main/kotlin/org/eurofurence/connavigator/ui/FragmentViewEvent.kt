@@ -1,58 +1,67 @@
 package org.eurofurence.connavigator.ui
 
-import android.content.SharedPreferences
 import android.os.Bundle
 import android.support.design.widget.FloatingActionButton
-import android.support.design.widget.Snackbar
 import android.support.v4.app.Fragment
-import android.support.v4.content.ContextCompat
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
-import io.swagger.client.model.EventEntry
+import com.github.chrisbanes.photoview.PhotoView
+import com.joanzapata.iconify.IconDrawable
+import com.joanzapata.iconify.fonts.FontAwesomeIcons
+import com.pawegio.kandroid.IntentFor
+import io.swagger.client.model.EventRecord
 import org.eurofurence.connavigator.R
-import org.eurofurence.connavigator.database.Database
+import org.eurofurence.connavigator.broadcast.DataChanged
+import org.eurofurence.connavigator.broadcast.EventFavoriteBroadcast
+import org.eurofurence.connavigator.database.HasDb
+import org.eurofurence.connavigator.database.eventStart
+import org.eurofurence.connavigator.database.lazyLocateDb
 import org.eurofurence.connavigator.net.imageService
+import org.eurofurence.connavigator.pref.AppPreferences
 import org.eurofurence.connavigator.tracking.Analytics
-import org.eurofurence.connavigator.ui.dialogs.EventDialog
-import org.eurofurence.connavigator.util.EventFavouriter
-import org.eurofurence.connavigator.util.Formatter
+import org.eurofurence.connavigator.ui.dialogs.eventDialog
 import org.eurofurence.connavigator.util.delegators.view
-import org.eurofurence.connavigator.util.extensions.contains
-import org.eurofurence.connavigator.util.extensions.get
-import org.eurofurence.connavigator.util.extensions.jsonObjects
-import org.eurofurence.connavigator.util.extensions.letRoot
+import org.eurofurence.connavigator.util.extensions.*
+import org.eurofurence.connavigator.util.v2.get
+import org.jetbrains.anko.*
 import us.feras.mdv.MarkdownView
+import java.util.*
 
 /**
  * Created by David on 4/9/2016.
  */
-class FragmentViewEvent() : Fragment() {
+class FragmentViewEvent() : Fragment(), HasDb {
     companion object {
         val EVENT_STATUS_CHANGED = "org.eurofurence.connavigator.ui.EVENT_STATUS_CHANGED"
     }
 
+    override val db by lazyLocateDb()
+    val dataChanged by lazy {
+        context.localReceiver(DataChanged.DATACHANGED) {
+            changeFabIcon()
+        }
+    }
+
+    lateinit var eventId: UUID
+
     /**
      * Constructs the info view with an assigned bundle
      */
-    constructor(eventEntry: EventEntry) : this() {
+    constructor(event: EventRecord) : this() {
         arguments = Bundle()
-        arguments.jsonObjects["eventEntry"] = eventEntry
+        arguments.jsonObjects["event"] = event
     }
 
-    val title by view(TextView::class.java)
-    val description by view(MarkdownView::class.java)
-    val image by view(ImageView::class.java)
-    val organizers by view(TextView::class.java)
-    val room by view(TextView::class.java)
-    val time by view(TextView::class.java)
-    val buttonSave by view(FloatingActionButton::class.java)
-
-    val preferences: SharedPreferences get() = letRoot { it.preferences }!!
-
-    val database: Database get() = letRoot { it.database }!!
+    val title: TextView by view()
+    val description: MarkdownView by view()
+    val image: ImageView by view()
+    val organizers: TextView by view()
+    val room: TextView by view()
+    val time: TextView by view()
+    val buttonSave: FloatingActionButton by view()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?) =
             inflater.inflate(R.layout.fview_event, container, false)
@@ -60,55 +69,108 @@ class FragmentViewEvent() : Fragment() {
     override fun onViewCreated(view: View?, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        Analytics.screen("Event Specific")
+        Analytics.screen(activity, "Event Specific")
 
+        if ("event" in arguments) {
+            val event: EventRecord = arguments.jsonObjects["event"]
 
-        if ("eventEntry" in arguments) {
-            val eventEntry = arguments.jsonObjects["eventEntry", EventEntry::class.java]
+            eventId = event.id
 
-            Analytics.event(Analytics.Category.EVENT, Analytics.Action.OPENED, eventEntry.title)
+            dataChanged.register()
 
-            val conferenceRoom = database.eventConferenceRoomDb.keyValues[eventEntry.conferenceRoomId]
-            val conferenceDay = database.eventConferenceDayDb.keyValues[eventEntry.conferenceDayId]
+            Analytics.event(Analytics.Category.EVENT, Analytics.Action.OPENED, event.title)
 
-            title.text = Formatter.eventTitle(eventEntry)
+            val conferenceRoom = event[toRoom]
+            val conferenceDay = event[toDay]
 
-            description.loadMarkdown(eventEntry.description)
+            title.text = event.fullTitle()
 
-            time.text = Formatter.eventToTimes(eventEntry, database, preferences.getBoolean(context.getString(R.string.date_short), true))
-            organizers.text = Formatter.eventOwner(eventEntry)
-            room.text = Formatter.roomFull(conferenceRoom!!)
+            description.loadMarkdown(event.description.markdownLinks())
 
-            imageService.load(database.imageDb[eventEntry.imageId], image)
+            time.text = "${db.eventStart(event).dayOfWeek().asText} from ${event.startTimeString()} to ${event.endTimeString()}"
+            organizers.text = event.ownerString()
+            room.text = conferenceRoom!!.name
 
-            changeFabIcon(eventEntry)
+            if (event.posterImageId !== null) {
+                imageService.load(db.images[event.posterImageId], image)
+            } else if (event.bannerImageId !== null) {
+                imageService.load(db.images[event.bannerImageId], image)
+            } else {
+                image.visibility = View.GONE
+            }
+
+            changeFabIcon()
 
             buttonSave.setOnClickListener {
-                EventDialog(eventEntry).show(activity.supportFragmentManager, "Event Dialog").let { true }
+                if(AppPreferences.dialogOnEventPress) {
+                    showDialog(event)
+                } else {
+                    favoriteEvent(event)
+                }
             }
 
             buttonSave.setOnLongClickListener {
-                if (EventFavouriter(context).toNotifications(eventEntry)) {
-                    Snackbar.make(buttonSave, "Favorited this event!", Snackbar.LENGTH_SHORT).show()
+                if(AppPreferences.dialogOnEventPress){
+                    favoriteEvent(event)
                 } else {
-                    Snackbar.make(buttonSave, "Removed this event from favorites!", Snackbar.LENGTH_SHORT).show()
+                    showDialog(event)
                 }
-
-                changeFabIcon(eventEntry)
-
                 true
             }
         }
     }
 
+    private fun showDialog(event: EventRecord) {
+        eventDialog(context, event, db)
+    }
+
+    private fun favoriteEvent(event: EventRecord) {
+        context.sendBroadcast(IntentFor<EventFavoriteBroadcast>(context).apply { jsonObjects["event"] = event })
+    }
+
     /**
      * Changes the FAB based on if the current event is liked or not
      */
-    private fun changeFabIcon(eventEntry: EventEntry?) {
-        if (database.favoritedDb.items.contains(eventEntry))
-            buttonSave.setImageDrawable(ContextCompat.getDrawable(context, R.drawable.icon_like_filled))
+    private fun changeFabIcon() {
+        if (eventId in db.faves)
+            buttonSave.setImageDrawable(IconDrawable(context, FontAwesomeIcons.fa_heart))
         else
-            buttonSave.setImageDrawable(ContextCompat.getDrawable(context, R.drawable.icon_menu))
+            buttonSave.setImageDrawable(IconDrawable(context, FontAwesomeIcons.fa_heart_o))
+    }
+}
+
+class EventUi : AnkoComponent<ViewGroup> {
+    lateinit var poster: PhotoView
+    lateinit var title: TextView
+    lateinit var room: TextView
+    lateinit var host: TextView
+
+    override fun createView(ui: AnkoContext<ViewGroup>) = with(ui) {
+        relativeLayout {
+            lparams(matchParent, matchParent)
+            backgroundResource = R.color.cardview_light_background
+
+            scrollView {
+                verticalLayout {
+                    poster = photoView {
+                        backgroundResource = R.drawable.image_fade
+                        imageResource = R.drawable.placeholder_event
+                    }.lparams(matchParent, wrapContent)
+
+                    verticalLayout {
+                        padding = dip(15)
+                        id = R.id.splitter
+                    }
+                }.lparams(matchParent, wrapContent)
+            }
+
+            floatingActionButton {
+
+            }.lparams(wrapContent, wrapContent) {
+                margin = dip(16)
+                alignEnd(R.id.splitter)
+            }
+        }
     }
 
 }

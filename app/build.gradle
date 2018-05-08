@@ -1,18 +1,26 @@
 apply plugin: "idea"
 apply plugin: "com.android.application"
 apply plugin: "kotlin-android"
+apply plugin: 'io.fabric'
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {
+    kotlinOptions {
+        verbose = true
+        freeCompilerArgs += ["-Xplugin", "$projectDir/tools/kotlin-serialization-gradle.jar"]
+    }
+}
 
 android {
-    compileSdkVersion 23
-    buildToolsVersion "23.0.2"
+
+    compileSdkVersion 25
+    buildToolsVersion "26.0.1"
 
     defaultConfig {
-        minSdkVersion 14
-        targetSdkVersion 23
-        versionCode 32
-        versionName "1.9.10"
+        minSdkVersion 16
+        targetSdkVersion 25
+        versionCode 78
+        versionName "2.1.0"
         multiDexEnabled true
-        manifestPlaceholders = [HOCKEYAPP_APP_ID: "dbc2f84c571a4b6f85df130813bfaa44"]
     }
 
     dexOptions {
@@ -68,7 +76,8 @@ android {
         }
         prod {
             // The actual minSdkVersion for the application.
-            minSdkVersion 14
+            minSdkVersion 16
+            applicationId "org.eurofurence.connavigator"
         }
     }
 }
@@ -76,33 +85,30 @@ android {
 
 ext {
     // Location of the schema file
-    backend_commit = "c72de67fe4dded4f8acf2e67f9e286245d3ebd1e"
-    schema_location = "https://raw.githubusercontent.com/eurofurence/ef-app_backend/$backend_commit/Swagger/ApiDefinition.yml"
+    schema_location = "https://app.eurofurence.org:40000/swagger/v2/swagger.json"
 
     // Dependency versions
     swagger_annotations_version = "1.5.0"
     gson_version = "2.6.1"
-    httpclient_version = "4.3.3"
-    volley_version = "1.0.1"
+    anko_version = "0.10.1"
+    httpcore_version = "4.4.4"
+    httpmime_version = "4.5.2"
+    volley_version = "1.0.0"
     junit_version = "4.8.1"
-    android_support_version = "23.2.1"
-    google_play_version = "9.2.1"
+    android_support_version = "25.3.1"
+    google_play_version = "12.0.1"
+    fuel_version = "1.8.0"
 }
 
 // Embedded swagger
 apply from: "swagger.gradle"
 
 dependencies {
-    compile fileTree(include: ["*.jar"], dir: "libs")
     testCompile "junit:junit:4.12"
     testCompile "org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version"
 
     compile "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     compile "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
-    compile "com.android.support:appcompat-v7:$android_support_version"
-    compile "com.android.support:design:$android_support_version"
-    compile "com.android.support:support-v4:$android_support_version"
-    compile "com.google.guava:guava:19.0"
     compile "com.android.support:appcompat-v7:$android_support_version"
     compile "com.android.support:design:$android_support_version"
     compile "com.android.support:support-v4:$android_support_version"
@@ -115,31 +121,70 @@ dependencies {
     compile "joda-time:joda-time:2.9.2:no-tzdb"
     compile "io.swagger:swagger-annotations:$swagger_annotations_version"
     compile "com.google.code.gson:gson:$gson_version"
-    compile "org.apache.httpcomponents:httpcore:$httpclient_version"
-    compile "org.apache.httpcomponents:httpclient:$httpclient_version"
-    compile "org.apache.httpcomponents:httpmime:$httpclient_version"
-    compile "com.mcxiaoke.volley:library-aar:$volley_version"
+
+    compile "com.android.volley:volley:${volley_version}"
     compile "com.nostra13.universalimageloader:universal-image-loader:1.9.5"
+
+    compile "org.apache.httpcomponents:httpcore:$httpcore_version"
+    compile ("org.apache.httpcomponents:httpmime:$httpmime_version") {
+        exclude group: 'org.apache.httpcomponents', module: 'httpclient'
+    }
 
     // Firebase
     compile "com.google.firebase:firebase-messaging:$google_play_version"
     compile "com.google.firebase:firebase-config:$google_play_version"
-
-    // Analytics
-    compile "com.google.android.gms:play-services-analytics:$google_play_version"
-
-    // Hockeyapp Analytics
-    compile 'net.hockeyapp.android:HockeySDK:4.1.0'
-
-    // Maps
-    compile "com.google.android.gms:play-services-maps:$google_play_version"
+    compile "com.google.firebase:firebase-perf:$google_play_version"
+    compile 'com.crashlytics.sdk.android:crashlytics:2.9.1'
 
     // Photoview
-    compile "com.github.chrisbanes:PhotoView:1.2.6"
+    compile 'com.github.chrisbanes:PhotoView:2.0.0'
+    compile 'us.feras.mdv:markdownview:1.1.0'
 
-    compile "us.feras.mdv:markdownview:1.1.0"
+    // Promises
+    compile 'nl.komponents.kovenant:kovenant-core:3.3.0'
+    compile 'nl.komponents.kovenant:kovenant-android:3.3.0'
+    compile 'nl.komponents.kovenant:kovenant-combine:3.3.0'
+    compile 'nl.komponents.kovenant:kovenant-jvm:3.3.0'
+    compile 'nl.komponents.kovenant:kovenant-functional:3.3.0'
+
+    // DSL for views
+    compile "org.jetbrains.anko:anko-sdk15:$anko_version" // sdk19, sdk21, sdk23 are also available
+    compile "org.jetbrains.anko:anko-appcompat-v7-coroutines:$anko_version"
+    compile "org.jetbrains.anko:anko-support-v4:$anko_version" // In case you need support-v4 bindings
+    compile "org.jetbrains.anko:anko-appcompat-v7:$anko_version" // For appcompat-v7 bindings
+    compile "org.jetbrains.anko:anko-coroutines:$anko_version"
+
+    // Kandroid for easier components
+    compile 'com.pawegio.kandroid:kandroid:0.7.0@aar'
+
+    //  Circular progress that don't make me consider suicide
+    compile 'com.github.lzyzsd:circleprogress:1.2.1'
+
+    // Preferences
+    compile "com.chibatching.kotpref:kotpref:2.1.1"
+    compile "com.chibatching.kotpref:enum-support:2.1.1"
+
+    // Fuel for networking
+    compile "com.github.kittinunf.fuel:fuel:$fuel_version" //for JVM
+    compile "com.github.kittinunf.fuel:fuel-android:$fuel_version" //for Android
+
+    // Font awesome
+    compile 'com.joanzapata.iconify:android-iconify-fontawesome:2.2.1'
+
+    // Observables
+    compile 'io.reactivex.rxjava2:rxandroid:2.0.2'
+
+    // Pretty time
+    compile group: 'org.ocpsoft.prettytime', name: 'prettytime', version: '3.2.7.Final'
+
+    // Serialization
+    compile files("tools/kotlin-serialization-runtime.jar")
 
     testCompile "junit:junit:$junit_version"
 }
 
 apply plugin: "com.google.gms.google-services"
+apply plugin: 'com.google.firebase.firebase-perf'
+repositories {
+    mavenCentral()
+}

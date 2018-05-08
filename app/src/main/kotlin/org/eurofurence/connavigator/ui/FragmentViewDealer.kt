@@ -1,169 +1,289 @@
 package org.eurofurence.connavigator.ui
 
-import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Matrix
-import android.net.Uri
 import android.os.Bundle
-import android.support.design.widget.FloatingActionButton
 import android.support.v4.app.Fragment
 import android.support.v4.content.ContextCompat
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import io.swagger.client.model.Dealer
-import io.swagger.client.model.Image
-import io.swagger.client.model.MapEntry
+import com.github.chrisbanes.photoview.PhotoView
+import io.swagger.client.model.DealerRecord
+import io.swagger.client.model.MapEntryRecord
+import io.swagger.client.model.MapRecord
 import org.eurofurence.connavigator.R
-import org.eurofurence.connavigator.database.Database
+import org.eurofurence.connavigator.database.HasDb
+import org.eurofurence.connavigator.database.findLinkFragment
+import org.eurofurence.connavigator.database.lazyLocateDb
 import org.eurofurence.connavigator.net.imageService
 import org.eurofurence.connavigator.tracking.Analytics
 import org.eurofurence.connavigator.ui.communication.ContentAPI
-import org.eurofurence.connavigator.util.Formatter
-import org.eurofurence.connavigator.util.RemoteConfig
-import org.eurofurence.connavigator.util.delegators.view
 import org.eurofurence.connavigator.util.extensions.*
+import org.eurofurence.connavigator.util.v2.get
+import org.jetbrains.anko.*
+import org.jetbrains.anko.support.v4.browse
 import us.feras.mdv.MarkdownView
 
 /**
  * Created by David on 16-5-2016.
  */
-class FragmentViewDealer() : Fragment(), ContentAPI {
-    constructor(dealer: Dealer) : this() {
+class FragmentViewDealer() : Fragment(), ContentAPI, HasDb, AnkoLogger {
+    constructor(dealer: DealerRecord) : this() {
         arguments = Bundle()
 
         arguments.jsonObjects["dealer"] = dealer
     }
 
-    val dealerName by view(TextView::class.java)
-    val dealerShortDescription by view(TextView::class.java)
-    val dealerArtistDescription by view(MarkdownView::class.java)
-    val dealerArtDescription by view(MarkdownView::class.java)
-    val dealerImage by view(ImageView::class.java)
-    val dealerButtonMore by view(FloatingActionButton::class.java)
-    val dealerPreviewArtImage by view(ImageView::class.java)
-    val dealerPreviewCaption by view(TextView::class.java)
-    val dealerMap by view(ImageView::class.java)
+    val ui by lazy { DealerUi() }
 
-    val dealerPreviewArtLayout by view(LinearLayout::class.java)
-
-    val database: Database get() = letRoot { it.database }!!
-    val remoteConfig: RemoteConfig get () = letRoot { it.remotePreferences }!!
+    override val db by lazyLocateDb()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?) =
-            inflater.inflate(R.layout.fview_dealer, container, false)
+            ui.createView(AnkoContext.create(container!!.context.applicationContext, container))
 
     override fun onViewCreated(view: View?, savedInstanceState: Bundle?) {
         // Send analytics pings
-        Analytics.screen("View Dealer Details")
+        Analytics.screen(activity, "View Dealer Details")
 
         if ("dealer" in arguments) {
-            val dealer = arguments.jsonObjects["dealer", Dealer::class.java]
+            val dealer: DealerRecord = arguments.jsonObjects["dealer"]
 
             Analytics.event(Analytics.Category.DEALER, Analytics.Action.OPENED, dealer.displayName ?: dealer.attendeeNickname)
 
             // Retrieve top image
-            val image = database.imageDb[dealer.artistImageId]
-
-            // Load the map
-            val mapEntry = database.mapEntryDb.items.find { it.targetId == dealer.id }
-
-            val mapImage = database.imageDb[database.mapEntityDb[mapEntry?.mapId]?.imageId]
-
-            resizeMap(dealer, mapEntry, mapImage)
+            val image = dealer[toArtistImage]
 
             // Set image on top
             if (image != null) {
-                imageService.load(image, dealerImage, false)
+                imageService.load(image, ui.primaryImage, false)
             } else {
-                dealerImage.setImageDrawable(ContextCompat.getDrawable(database.context, R.drawable.dealer_white_full))
+                ui.primaryImage.setImageDrawable(ContextCompat.getDrawable(context, R.drawable.dealer_white_full))
             }
 
             // Load art preview image
-            imageService.load(database.imageDb[dealer.artPreviewImageId], dealerPreviewArtImage)
+            imageService.load(dealer[toPreview], ui.artPreview)
 
-            if (dealerPreviewArtImage.visibility == View.GONE) {
-                dealerPreviewArtLayout.visibility = View.GONE
-            }
+            ui.artPreviewCaption.text = dealer.artPreviewCaption
 
-            dealerPreviewCaption.text = dealer.artPreviewCaption
+            ui.name.text = dealer.getName()
+            ui.shortDescription.text = dealer.shortDescription
 
-            dealerName.text = Formatter.dealerName(dealer)
-            dealerShortDescription.text = dealer.shortDescription
+            ui.aboutArtist.loadMarkdown(
+                    if (dealer.aboutTheArtistText.isNotEmpty())
+                        dealer.aboutTheArtistText
+                    else
+                        "This artist did not supply any artist description to show to you :("
+            )
 
-            dealerArtistDescription.loadMarkdown(dealer.aboutTheArtistText)
-            dealerArtDescription.loadMarkdown(dealer.aboutTheArtText)
+            if (dealer.artPreviewImageId == null) {
+                ui.artPreview.visibility = View.GONE
 
-            // Handle the FAB that links out
-            dealerButtonMore.setOnClickListener {
-                try {
-                    if (dealer.websiteUri.startsWith("http")) {
-                        Analytics.event(Analytics.Category.DEALER, Analytics.Action.LINK_CLICKED, dealer.displayName ?: dealer.attendeeNickname)
-
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(dealer.websiteUri)))
-                    } else {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://" + dealer.websiteUri)))
-                    }
-                } catch(e: Exception) {
-                    Analytics.exception(e)
-                    logv { "User tried clicking on a dealer with no url" }
+                if (dealer.artPreviewCaption.isEmpty()) {
+                    ui.artPreviewContainer.visibility = View.GONE
                 }
             }
 
-            // Load empty texts
-            if (dealer.websiteUri.isEmpty())
-                dealerButtonMore.visibility = View.GONE
+            if (dealer.aboutTheArtText.isNotEmpty()) {
+                ui.aboutArt.loadMarkdown(dealer.aboutTheArtText)
+            } else {
+                ui.aboutArtContainer.visibility = View.GONE
+            }
 
-            if (dealer.aboutTheArtText.isEmpty())
-                dealerArtistDescription.loadMarkdown("This artist did not supply any artist description to show to you :(")
-
-            if (dealer.aboutTheArtistText.isEmpty())
-                dealerArtDescription.loadMarkdown("this artist did not supply any art descriptions to show to you :(")
-
-            if (dealer.shortDescription.isEmpty())
-                dealerShortDescription.visibility = View.GONE
+            configureLinks(dealer)
+            configureMap(dealer)
         }
     }
 
-    private fun resizeMap(dealer: Dealer, mapEntry: MapEntry?, mapImage: Image?) {
-        if (mapEntry == null || mapImage == null) {
-            dealerMap.visibility = View.GONE
-            return
+    private fun configureMap(dealer: DealerRecord) {
+        info { "Finding dealer in mapEntries" }
+        val entryMap = db.findLinkFragment(dealer.id.toString())
+
+        val map = entryMap["map"] as MapRecord?
+        val entry = entryMap["entry"] as MapEntryRecord?
+
+        if (map != null && entry != null) {
+            info { "Found maps and entries!" }
+            info { "Map name is ${map.description}" }
+            info { "Entry is at (${entry.x}, ${entry.y})" }
+            imageService.load(db.toImage(map), ui.map)
+
+            ui.map.attacher.setScale(4F, entry.x.toFloat(), entry.y.toFloat(), true)
+            ui.map.attacher.update()
+        } else {
+            warn { "No map or entry found!" }
+            ui.map.visibility = View.GONE
         }
 
-
-        val bitmap = imageService.getBitmap(mapImage)
-
-        val dealerCoords = mapEntry.asRelatedCoordinates(mapImage)
-
-        var width = remoteConfig.dealerMapWidth.toInt()
-        var height = remoteConfig.dealerMapHeight.toInt()
-
-        val matrix = Matrix()
-
-        // set coordinates
-        var x = dealerCoords.x
-        var y = dealerCoords.y
-
-        // Move X and y higher and lefter to to make coords we have the middle
-        x -= width / 2
-        y -= height / 2
-
-        // Fix if less then 0
-        if (x < 0) x = 0
-        if (y < 0) y = 0
-
-        // Fix image bounds
-        if (x + width > bitmap.width) width = bitmap.width - x
-        if (y + height > bitmap.height) height = bitmap.height - y
-
-        //crop
-        val croppedMap = Bitmap.createBitmap(bitmap, x, y, width, height, matrix, true)
-
-        dealerMap.setImageBitmap(croppedMap)
+        ui.map.visibility = View.GONE
     }
 
+    private fun configureLinks(dealer: DealerRecord) {
+        info { "Setting up external links" }
+
+        if (dealer.links != null || !dealer.telegramHandle.isNullOrEmpty() || !dealer.twitterHandle.isNullOrEmpty()) {
+            ui.linkLayout.visibility = View.VISIBLE
+        }
+
+        if (dealer.links != null && !dealer.links.isEmpty()) {
+            ui.websites.visibility = View.VISIBLE
+            dealer.links.forEach {
+                val button = Button(context).apply {
+                    info { "Adding button for $it" }
+                    text = it.target
+                    visibility = View.VISIBLE
+                    setOnTouchListener { _, _ -> browse(it.target) }
+                }
+
+                ui.websites.addView(button)
+            }
+        }
+
+        if (!dealer.telegramHandle.isNullOrEmpty()) {
+            info { "Setting up telegram button for ${dealer.telegramHandle}" }
+            ui.telegram.apply {
+                text = "${dealer.telegramHandle} on Telegram"
+                visibility = View.VISIBLE
+                setOnClickListener { browse("https://telegram.me/${dealer.telegramHandle}") }
+            }
+        }
+
+        if (!dealer.twitterHandle.isNullOrEmpty()) {
+            info { "Setting up twitter handle" }
+            ui.twitter.apply {
+                text = "${dealer.twitterHandle} on {fa-twitter}"
+                visibility = View.VISIBLE
+                setOnClickListener { browse("https://twitter.com/${dealer.twitterHandle}") }
+            }
+        }
+    }
+
+    class DealerUi : AnkoComponent<ViewGroup> {
+        lateinit var primaryImage: PhotoView
+        lateinit var name: TextView
+        lateinit var shortDescription: TextView
+        lateinit var aboutArtist: MarkdownView
+        lateinit var aboutArt: MarkdownView
+        lateinit var aboutArtContainer: LinearLayout
+        lateinit var artPreview: PhotoView
+        lateinit var artPreviewCaption: TextView
+        lateinit var artPreviewContainer: LinearLayout
+        lateinit var linkLayout: LinearLayout
+        lateinit var websites: LinearLayout
+        lateinit var twitter: Button
+        lateinit var telegram: Button
+        lateinit var map: PhotoView
+
+        override fun createView(ui: AnkoContext<ViewGroup>) = with(ui) {
+            relativeLayout {
+                backgroundResource = R.color.cardview_light_background
+                scrollView {
+                    verticalLayout {
+                        lparams(matchParent, matchParent)
+
+                        primaryImage = photoView {
+                            lparams(matchParent, dip(300))
+                            backgroundResource = R.drawable.image_fade
+                        }
+
+                        verticalLayout {
+                            lparams(matchParent, wrapContent)
+                            backgroundResource = R.color.primaryDarker
+                            padding = dip(15)
+
+                            name = textView {
+                                text = "Dealer Name"
+                                textAlignment = View.TEXT_ALIGNMENT_CENTER
+                                setTextAppearance(ctx, android.R.style.TextAppearance_Large_Inverse)
+
+                                padding = dip(10)
+                            }
+
+                            shortDescription = textView {
+                                text = "Short description"
+                                padding = dip(10)
+
+                                setTextAppearance(ctx, android.R.style.TextAppearance_Medium_Inverse)
+                            }
+                        }
+
+                        textView {
+                            text = "About the Artist"
+                            setPadding(dip(25), dip(20), dip(25), dip(0))
+                            setTextAppearance(ctx, R.style.TextAppearance_AppCompat_Large)
+                        }
+
+                        aboutArtist = markdownView {
+                            lparams {
+                                margin = dip(15)
+                            }
+                        }
+
+                        artPreviewContainer = verticalLayout {
+                            padding = dip(15)
+                            backgroundResource = R.color.primary
+
+                            artPreview = photoView {
+                                lparams(matchParent, dip(400))
+                                scaleType = ImageView.ScaleType.FIT_CENTER
+                            }
+
+                            artPreviewCaption = textView {
+                                textAlignment = View.TEXT_ALIGNMENT_CENTER
+                                padding = dip(15)
+                                setTextAppearance(ctx, R.style.TextAppearance_AppCompat_Medium_Inverse)
+                            }
+                        }
+
+                        aboutArtContainer = verticalLayout {
+                            lparams(matchParent, wrapContent)
+
+                            textView("About the Art") {
+                                setPadding(dip(25), dip(20), dip(25), dip(0))
+                                setTextAppearance(ctx, R.style.TextAppearance_AppCompat_Large)
+                            }
+                            aboutArt = markdownView {
+                                lparams {
+                                    margin = dip(15)
+                                }
+                            }
+                        }
+
+                        linkLayout = verticalLayout {
+                            visibility = View.GONE
+                            textView("Find out more") {
+                                setTextAppearance(ctx, R.style.TextAppearance_AppCompat_Medium)
+                            }
+
+                            websites = verticalLayout {
+                                visibility = View.GONE
+                            }.lparams(matchParent, wrapContent)
+
+                            twitter = fontAwesomeButton {
+                                lparams(matchParent, wrapContent)
+                                visibility = View.GONE
+                            }.applyRecursively { R.style.Widget_AppCompat_Button_Colored }
+
+                            telegram = fontAwesomeButton {
+                                lparams(matchParent, wrapContent)
+                                visibility = View.GONE
+                            }.applyRecursively { R.style.Widget_AppCompat_Button_Colored }
+                        }.lparams(matchParent, wrapContent) { margin = dip(15) }
+
+                        map = photoView {
+                            backgroundResource = R.color.cardview_dark_background
+                            minimumScale = 1F
+                            mediumScale = 2.5F
+                            maximumScale = 5F
+                            lparams(matchParent, dip(400))
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                            imageResource = R.drawable.placeholder_event
+                        }
+                    }.lparams(matchParent, wrapContent)
+                }
+            }
+        }
+    }
 }

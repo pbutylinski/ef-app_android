@@ -2,8 +2,6 @@ package org.eurofurence.connavigator.app
 
 import android.content.Context
 import android.util.Log
-import com.google.common.io.FileWriteMode
-import com.google.common.io.Files
 import org.eurofurence.connavigator.BuildConfig
 import java.io.File
 import java.io.PrintWriter
@@ -42,41 +40,32 @@ object logService {
         val m = message()
         val severityName = when (severity) {
             Log.VERBOSE -> {
-                //Log.v(tag, m)
-                println("VER $tag: $m")
+                Log.v(tag, m)
+                //println("VER $tag: $m")
                 "Verbose"
             }
             Log.DEBUG -> {
-                //Log.d(tag, m)
-                println("DBG $tag: $m")
+                Log.d(tag, m)
+                //println("DBG $tag: $m")
                 "Debug"
             }
             Log.INFO -> {
-                //Log.i(tag, m)
-                println("INF $tag: $m")
+                Log.i(tag, m)
+                //println("INF $tag: $m")
                 "Info"
             }
             Log.WARN -> {
-                //Log.w(tag, m)
-                println("WRN $tag: $m")
+                Log.w(tag, m)
+                //println("WRN $tag: $m")
                 "Warn"
             }
             Log.ERROR -> {
-                //Log.e(tag, m)
-                println("ERR $tag: $m")
+                Log.e(tag, m)
+                //println("ERR $tag: $m")
                 "Error"
             }
             else -> "Unknown"
         }
-
-        // Write to stream
-        Files.asCharSink(logfile, CHARSET, FileWriteMode.APPEND).openBufferedStream()
-                .let { PrintWriter(it) }
-                .use {
-                    it.println("$severityName $tag ${Date()}")
-                    it.println(m)
-                    it.println()
-                }
     }
 
     /**
@@ -92,50 +81,39 @@ object logService {
         val m = message()
         val severityName = when (severity) {
             Log.VERBOSE -> {
-                //Log.v(tag, m)
-                println("VER $tag: $m")
-                throwable.printStackTrace()
+                Log.v(tag, m)
+                //println("VER $tag: $m")
+                //throwable.printStackTrace()
                 "Verbose"
             }
             Log.DEBUG -> {
-                //Log.d(tag, m)
-                println("DBG $tag: $m")
-                throwable.printStackTrace()
+                Log.d(tag, m)
+                //println("DBG $tag: $m")
+                //throwable.printStackTrace()
                 "Debug"
             }
             Log.INFO -> {
-                //Log.i(tag, m, throwable)
-                println("INF $tag: $m")
-                throwable.printStackTrace()
+                Log.i(tag, m, throwable)
+                //println("INF $tag: $m")
+                //throwable.printStackTrace()
                 "Info"
             }
             Log.WARN -> {
-                //Log.w(tag, m, throwable)
-                println("WRN $tag: $m")
-                throwable.printStackTrace()
+                Log.w(tag, m, throwable)
+                //println("WRN $tag: $m")
+                //throwable.printStackTrace()
                 "Warn"
             }
             Log.ERROR -> {
-                //Log.e(tag, m, throwable)
-                println("ERR $tag: $m")
-                throwable.printStackTrace()
+                Log.e(tag, m, throwable)
+                //println("ERR $tag: $m")
+                //throwable.printStackTrace()
                 "Error"
             }
             else -> "Unknown"
         }
-
-        // Write to stream
-        Files.asCharSink(logfile, CHARSET, FileWriteMode.APPEND).openBufferedStream()
-                .let { PrintWriter(it) }
-                .use {
-                    it.println("$severityName $tag ${Date()}")
-                    it.println(m)
-                    throwable.printStackTrace(it)
-                    it.println()
-                }
     }
 
-    fun messages() = Files.readLines(logfile, CHARSET)
 
     fun initialize(context: Context) {
 

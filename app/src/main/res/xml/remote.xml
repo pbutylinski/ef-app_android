@@ -13,21 +13,19 @@
         <value>false</value>
     </entry>
     <entry>
-        <key>show_conflicting_events</key>
+        <key>nextConStart</key>
+        <value>1502834400000</value>
+    </entry>
+    <entry>
+        <key>lastConEnd</key>
+        <value>1471471200000</value>
+    </entry>
+    <entry>
+        <key>native_fursuit_games</key>
         <value>false</value>
     </entry>
     <entry>
-        <key>show_event_glyphs</key>
-        <value>
-            <false>false</false>
-        </value>
-    </entry>
-    <entry>
-        <key>dealer_map_width</key>
-        <value>750</value>
-    </entry>
-    <entry>
-        <key>dealer_map_height</key>
-        <value>400</value>
+        <key>api_base_url</key>
+        <value>https://app.eurofurence.org/api/v2/</value>
     </entry>
 </defaultsMap>

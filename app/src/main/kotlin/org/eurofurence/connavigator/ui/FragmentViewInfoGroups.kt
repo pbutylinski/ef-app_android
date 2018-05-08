@@ -12,57 +12,55 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import io.swagger.client.model.Info
-import io.swagger.client.model.InfoGroup
+import io.swagger.client.model.KnowledgeEntryRecord
+import io.swagger.client.model.KnowledgeGroupRecord
 import org.eurofurence.connavigator.R
-import org.eurofurence.connavigator.database.Database
+import org.eurofurence.connavigator.database.HasDb
+import org.eurofurence.connavigator.database.lazyLocateDb
 import org.eurofurence.connavigator.net.imageService
 import org.eurofurence.connavigator.tracking.Analytics
 import org.eurofurence.connavigator.ui.communication.ContentAPI
-import org.eurofurence.connavigator.util.Choice
-import org.eurofurence.connavigator.util.Formatter
-import org.eurofurence.connavigator.util.SharingUtility
-import org.eurofurence.connavigator.util.TouchVibrator
+import org.eurofurence.connavigator.util.*
 import org.eurofurence.connavigator.util.delegators.view
 import org.eurofurence.connavigator.util.extensions.applyOnRoot
-import org.eurofurence.connavigator.util.extensions.get
-import org.eurofurence.connavigator.util.extensions.letRoot
+import org.eurofurence.connavigator.util.v2.get
+import org.jetbrains.anko.*
 
-class FragmentViewInfoGroups : Fragment(), ContentAPI {
+class FragmentViewInfoGroups : Fragment(), ContentAPI, HasDb {
+    override val db by lazyLocateDb()
+
     companion object {
         fun <T : Any, U : Any> weave(parents: List<T>, children: Map<T, List<U>>): List<Choice<T, U>> =
                 parents.flatMap {
-                    val head = listOf(Choice.pri<T, U>(it))
-                    val tail = (children[it] ?: emptyList()).map { Choice.snd<T, U>(it) }
+                    val head = listOf(left<T, U>(it))
+                    val tail = (children[it] ?: emptyList()).map { right<T, U>(it) }
                     head + tail
                 }
     }
 
     // Event view holder finds and memorizes the views in an event card
     inner class InfoGroupViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        val title by view(TextView::class.java)
-        val description by view(TextView::class.java)
-        val image by view(ImageView::class.java)
+        val title: TextView by view()
+        val description: TextView by view()
+        val image: ImageView by view()
     }
 
     // Event view holder finds and memorizes the views in an event card
     inner class InfoGroupItemViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        val title by view(TextView::class.java)
-        val layout by view(LinearLayout::class.java)
+        val title: TextView by view()
+        val layout: LinearLayout by view()
     }
 
     inner class DataAdapter : RecyclerView.Adapter<ViewHolder>() {
         override fun getItemViewType(pos: Int) =
-                if (effectiveInterleaved[pos].isPrimary) 1 else 0
+                if (effectiveInterleaved[pos].isLeft) 1 else 0
 
         override fun onCreateViewHolder(parent: ViewGroup, type: Int): RecyclerView.ViewHolder =
                 when (type) {
-                    0 -> InfoGroupItemViewHolder(LayoutInflater
-                            .from(parent.context)
-                            .inflate(R.layout.layout_info_group_item, parent, false))
-                    1 -> InfoGroupViewHolder(LayoutInflater.
-                            from(parent.context)
-                            .inflate(R.layout.layout_info_group, parent, false))
+                    0 -> InfoGroupItemViewHolder(
+                            GroupItemUi().createView(AnkoContext.create(context.applicationContext, parent)))
+                    1 -> InfoGroupViewHolder(
+                            GroupUi().createView(AnkoContext.create(context.applicationContext, parent)))
                     else -> throw IllegalStateException()
 
                 }
@@ -72,48 +70,42 @@ class FragmentViewInfoGroups : Fragment(), ContentAPI {
 
 
         override fun onBindViewHolder(rawHolder: ViewHolder, pos: Int) {
-            effectiveInterleaved[pos].let(
-                    { infoGroup ->
-                        // Cast holder
-                        val holder = rawHolder as InfoGroupViewHolder
+            effectiveInterleaved[pos] onLeft { group ->
+                // Cast holder
+                val holder = rawHolder as InfoGroupViewHolder
 
-                        // Set data
-                        holder.title.text = infoGroup.name
-                        holder.description.text = infoGroup.description
-                        imageService.load(database.imageDb[infoGroup.imageId], holder.image)
+                // Set data
+                holder.title.text = group.name
+                holder.description.text = group.description
 
-                    },
-                    { info ->
-                        // Cast holder
-                        val holder = rawHolder as InfoGroupItemViewHolder
+            } onRight { entry ->
+                // Cast holder
+                val holder = rawHolder as InfoGroupItemViewHolder
 
-                        // Set data
-                        holder.title.text = info.title
+                // Set data
+                holder.title.text = entry.title
 
-                        // Handle clicks
-                        holder.itemView.setOnClickListener {
-                            applyOnRoot { navigateToInfo(info) }
-                            vibrator.short()
-                        }
-                        holder.itemView.setOnLongClickListener {
-                            startActivity(SharingUtility.share(Formatter.shareInfo(info))).let { true }
-                            vibrator.long().let { true }
-                        }
-                    }
-            )
+                // Handle clicks
+                holder.layout.setOnClickListener {
+                    applyOnRoot { navigateToKnowledgeEntry(entry) }
+                    vibrator.short()
+                }
+                holder.layout.setOnLongClickListener {
+                    startActivity(SharingUtility.share(Formatter.shareInfo(entry))).let { true }
+                    vibrator.long().let { true }
+                }
+            }
         }
     }
 
 
-    val database: Database get() = letRoot { it.database }!!
-
     // View
-    val infoGroups  by view(RecyclerView::class.java)
+    val infoGroups: RecyclerView by view()
 
     val vibrator by lazy { TouchVibrator(context) }
 
     // Store of currently displayed info groups and items
-    var effectiveInterleaved = emptyList<Choice<InfoGroup, Info>>()
+    var effectiveInterleaved = emptyList<Choice<KnowledgeGroupRecord, KnowledgeEntryRecord>>()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?) =
             inflater.inflate(R.layout.fview_info_groups, container, false)
@@ -122,7 +114,9 @@ class FragmentViewInfoGroups : Fragment(), ContentAPI {
         // Initialize the info groups
         dataInit()
 
-        Analytics.screen("Info Listings")
+        applyOnRoot { changeTitle("Info Listings") }
+
+        Analytics.screen(activity, "Info Listings")
 
         // Default setup for recycler layout and animation
         infoGroups.layoutManager = LinearLayoutManager(context)
@@ -138,13 +132,64 @@ class FragmentViewInfoGroups : Fragment(), ContentAPI {
 
     private fun dataInit() {
         // Calibrate groups and elements
-        val groups = database.infoGroupDb.items
-                .sortedBy { it.position }
-        val elements = database.infoDb.items
-                .groupBy { database.infoGroupDb.keyValues[it.infoGroupId]!! }
-                .mapValues { it.value.sortedBy { it.position } }
+        val groups = knowledgeGroups.asc { it.order }
+        val elements = knowledgeEntries.items
+                .groupBy { it[toGroup] ?: error("Entry without group mapping.") }
+                .mapValues { it.value.sortedBy { it.order } }
 
         // Weave them
         effectiveInterleaved = weave(groups, elements)
     }
+}
+
+class GroupUi : AnkoComponent<ViewGroup> {
+    lateinit var image: ImageView
+    lateinit var title: TextView
+    lateinit var description: TextView
+    lateinit var layout: LinearLayout
+
+    override fun createView(ui: AnkoContext<ViewGroup>) = with(ui) {
+        verticalLayout {
+            lparams(matchParent, wrapContent)
+            backgroundResource = android.R.color.background_light
+            id = R.id.layout
+
+            image = imageView {
+                lparams(matchParent, dip(200))
+                visibility = View.GONE
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                id = R.id.image
+            }
+
+            title = themedTextView(R.style.AppTheme_Header) {
+                setTextAppearance(ctx, android.R.style.TextAppearance_Large_Inverse)
+                id = R.id.title
+            }
+
+            description = textView {
+                setTextAppearance(ctx, android.R.style.TextAppearance_Small)
+                backgroundResource = R.color.backgroundGrey
+                padding = dip(10)
+                id = R.id.description
+            }
+        }
+    }
+}
+
+class GroupItemUi : AnkoComponent<ViewGroup> {
+    override fun createView(ui: AnkoContext<ViewGroup>) = with(ui) {
+        verticalLayout {
+            lparams(matchParent, wrapContent)
+            padding = dip(16)
+            id = R.id.layout
+            backgroundResource = R.color.cardview_light_background
+
+            textView {
+                setTextAppearance(ctx, android.R.style.TextAppearance_Large)
+                lparams(matchParent, wrapContent)
+                id = R.id.title
+            }
+        }
+    }
+
 }

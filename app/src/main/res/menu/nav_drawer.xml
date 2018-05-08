@@ -32,6 +32,22 @@
                 android:title="Points of Interest"/>
     </group>
 
+    <item android:title="Personal">
+        <menu>
+            <item
+                    android:id="@+id/navLogin"
+                    android:icon="@drawable/icon_user"
+                    android:title="Login"/>
+            <item
+                android:id="@+id/navMessages"
+                android:icon="@drawable/icon_message"
+                android:title="Personal Messages" />
+            <item
+                android:id="@+id/navFursuitGames"
+                android:icon="@drawable/icon_paw"
+                android:title="Collect'Em All" />
+        </menu>
+    </item>
     <item android:title="External">
         <menu>
             <item android:id="@+id/navWebSite"
@@ -47,6 +63,7 @@
         <menu>
             <item android:id="@+id/navFeedback"
                   android:title="App Feedback"
+                  android:visible="false"
                   android:icon="@drawable/icon_like_filled"/>
             <item android:id="@+id/navDevReload"
                   android:title="Update"

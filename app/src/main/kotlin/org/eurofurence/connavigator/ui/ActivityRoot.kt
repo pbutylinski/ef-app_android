@@ -14,37 +14,55 @@ import android.support.v4.app.Fragment
 import android.support.v4.view.GravityCompat
 import android.support.v4.widget.DrawerLayout
 import android.support.v7.app.ActionBarDrawerToggle
-import android.support.v7.app.AlertDialog
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.Toolbar
-import android.view.ContextThemeWrapper
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.TextView
-import io.swagger.client.model.Dealer
-import io.swagger.client.model.EventEntry
-import io.swagger.client.model.Info
-import net.hockeyapp.android.CrashManager
-import net.hockeyapp.android.FeedbackManager
+import com.google.gson.Gson
+import com.joanzapata.iconify.IconDrawable
+import com.joanzapata.iconify.fonts.FontAwesomeIcons
+import io.swagger.client.model.AnnouncementRecord
+import io.swagger.client.model.DealerRecord
+import io.swagger.client.model.EventRecord
+import io.swagger.client.model.KnowledgeEntryRecord
+import io.swagger.client.model.PrivateMessageRecord
 import org.eurofurence.connavigator.BuildConfig
 import org.eurofurence.connavigator.R
-import org.eurofurence.connavigator.database.Database
+import org.eurofurence.connavigator.broadcast.ResetReceiver
+import org.eurofurence.connavigator.database.HasDb
 import org.eurofurence.connavigator.database.UpdateIntentService
-import org.eurofurence.connavigator.net.imageService
+import org.eurofurence.connavigator.database.lazyLocateDb
+import org.eurofurence.connavigator.database.updateComplete
+import org.eurofurence.connavigator.pref.AuthPreferences
+import org.eurofurence.connavigator.pref.RemotePreferences
 import org.eurofurence.connavigator.tracking.Analytics
 import org.eurofurence.connavigator.ui.communication.ContentAPI
 import org.eurofurence.connavigator.ui.communication.RootAPI
-import org.eurofurence.connavigator.ui.fragments.FragmentPoiMap
-import org.eurofurence.connavigator.util.RemoteConfig
 import org.eurofurence.connavigator.util.delegators.header
 import org.eurofurence.connavigator.util.delegators.view
-import org.eurofurence.connavigator.util.extensions.*
+import org.eurofurence.connavigator.util.extensions.applyOnContent
+import org.eurofurence.connavigator.util.extensions.booleans
+import org.eurofurence.connavigator.util.extensions.localReceiver
+import org.eurofurence.connavigator.util.extensions.logd
+import org.eurofurence.connavigator.util.extensions.logv
+import org.eurofurence.connavigator.util.extensions.objects
+import org.jetbrains.anko.AnkoLogger
+import org.jetbrains.anko.alert
+import org.jetbrains.anko.browse
+import org.jetbrains.anko.info
+import org.jetbrains.anko.longToast
+import org.jetbrains.anko.noButton
+import org.jetbrains.anko.startActivity
+import org.jetbrains.anko.support.v4.withArguments
+import org.jetbrains.anko.yesButton
 import org.joda.time.DateTime
 import org.joda.time.Days
-import java.util.*
+import java.util.Date
+import java.util.UUID
 
-class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPreferenceChangeListener {
+class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPreferenceChangeListener, HasDb, AnkoLogger {
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences, key: String) {
         logd { "Updating content data after preference change" }
 
@@ -53,36 +71,33 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
         }
 
         applyOnContent { dataUpdated() }
-        Analytics.onSharedPreferenceChanged(sharedPreferences, key)
     }
 
     override fun changeTitle(text: String) {
-        supportActionBar!!.title = text
+        supportActionBar?.title = text
+        Analytics.screen(this, text)
     }
 
     // Menu
     var menu: Menu? = null
 
     // Views
-    val toolbar by view(Toolbar::class.java)
-    override val tabs by view(TabLayout::class.java)
-    val drawer by view(DrawerLayout::class.java)
-    val fab by view(FloatingActionButton::class.java)
+    val toolbar: Toolbar by view()
+    override val tabs: TabLayout by view()
+    val drawer: DrawerLayout by view()
+    val fab: FloatingActionButton by view()
 
     // Views in navigation view
-    val navView by view(NavigationView::class.java)
-    val navDays by header(TextView::class.java, { navView })
-    val navTitle by header(TextView::class.java, { navView })
-    val navSubtitle by header(TextView::class.java, { navView })
+    val navView: NavigationView by view()
+    val navDays: TextView by header({ navView })
+    val navTitle: TextView by header({ navView })
+    val navSubtitle: TextView by header({ navView })
 
     // Content API aggregator
     var content: Set<ContentAPI> = setOf()
 
-    // Settings
-    override val preferences by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
-
-    override val remotePreferences = RemoteConfig()
-
+    // See if we're on the home screen. Used to check the back button
+    var onHome = true
 
     /**
      * Listens to update responses, since the event recycler holds database related data
@@ -93,15 +108,23 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
         val time = it.objects["time", Date::class.java]
 
 
-        // Make a snackbar for the result
-        makeSnackbar("Database reload ${if (success) "successful" else "failed"}, version $time")
+        if (!success) {
+            // Make a snackbar for the result
+            makeSnackbar("Database reload ${if (success) "successful" else "failed"}, version $time")
 
-        // Update content data if fragments implement content API
-        applyOnContent {
-            logv { "Updated the data and dispatching to $this" }
-            dataUpdated()
+            // Update content data if fragments implement content API
+            applyOnContent {
+                logv { "Updated the data and dispatching to $this" }
+                dataUpdated()
+            }
         }
     }
+
+    /**
+     * Use a bound value instead of the specification.
+     */
+    val updateCompleteMsg by updateComplete
+
 
     override fun makeSnackbar(text: String) {
         Snackbar.make(findViewById(R.id.content)!!, text, Snackbar.LENGTH_LONG).show()
@@ -111,7 +134,7 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
         super.onCreate(savedInstanceState)
 
         // Stop the rotation
-        if (remotePreferences.rotationEnabled == false) {
+        if (RemotePreferences.rotationEnabled == false) {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
         // Assign the layout
@@ -120,15 +143,14 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
         setupBar()
         setupBarNavLink()
         setupNav()
-        setupFab()
 
-        if (!handleBrowsingIntent()) {
-            setupContent()
-        }
+        // Show the home screen
+        setupContent()
+
+        // Show our browsing intent
+        handleBrowsingIntent()
 
         PreferenceManager.getDefaultSharedPreferences(this).registerOnSharedPreferenceChangeListener(this)
-
-        CrashManager.register(this)
     }
 
     /**
@@ -143,7 +165,7 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
             // Handle event links
                 intent.dataString.contains("/event/") -> {
                     val uuid = intent.data.lastPathSegment
-                    val eventValue = database.eventEntryDb[UUID.fromString(uuid)]
+                    val eventValue = events[UUID.fromString(uuid)]
                     if (eventValue != null) {
                         Analytics.event(Analytics.Category.EVENT, Analytics.Action.INCOMING, eventValue.title)
                         navigateToEvent(eventValue)
@@ -156,10 +178,10 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
             // Handle info links
                 intent.dataString.contains("/info/") -> {
                     val uuid = intent.data.lastPathSegment
-                    val infoValue = database.infoDb[UUID.fromString(uuid)]
-                    if (infoValue != null) {
-                        Analytics.event(Analytics.Category.INFO, Analytics.Action.INCOMING, infoValue.title)
-                        navigateToInfo(infoValue)
+                    val knowledgeEntryValue = knowledgeEntries[UUID.fromString(uuid)]
+                    if (knowledgeEntryValue != null) {
+                        Analytics.event(Analytics.Category.INFO, Analytics.Action.INCOMING, knowledgeEntryValue.title)
+                        navigateToKnowledgeEntry(knowledgeEntryValue)
                         return true
                     } else {
                         makeSnackbar("I'm sorry, but we didn't find any info!")
@@ -169,7 +191,7 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
             // Handle dealer links
                 intent.dataString.contains("/dealer/") -> {
                     val uuid = intent.data.lastPathSegment
-                    val dealerValue = database.dealerDb[UUID.fromString(uuid)]
+                    val dealerValue = dealers[UUID.fromString(uuid)]
                     if (dealerValue != null) {
                         Analytics.event(Analytics.Category.DEALER, Analytics.Action.INCOMING, dealerValue.attendeeNickname)
                         navigateToDealer(dealerValue)
@@ -184,34 +206,56 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
     }
 
     private fun setupContent() =
-            navigateRoot(FragmentViewHome::class.java)
+            navigateRoot(FragmentViewHome::class.java, ActionBarMode.HOME)
 
     override fun onResume() {
         super.onResume()
         updateReceiver.register()
-        UpdateIntentService.dispatchUpdate(this)
-        RemoteConfig().intitialize(this)
+        updateCompleteMsg.listen {
+            println(it)
+        }
     }
 
     override fun onPause() {
+        updateCompleteMsg.unlistenAll()
         updateReceiver.unregister()
         super.onPause()
     }
 
     override fun onBackPressed() {
+        info { "Items on the backstack${fragmentManager.backStackEntryCount}" }
         if (drawer.isDrawerOpen(GravityCompat.START)) {
             drawer.closeDrawer(GravityCompat.START)
-        } else {
+        } else if (supportFragmentManager.backStackEntryCount > 0) {
             super.onBackPressed()
+        } else if (onHome == false) {
+            navigateRoot(FragmentViewHome::class.java, ActionBarMode.HOME)
+        } else {
+            alert("Are you sure you want to close the app? You'll still receive messages", "Close the app") {
+                yesButton { super.onBackPressed() }
+                noButton { /* pass */ }
+            }.show()
         }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         // Inflate the menu options
         menuInflater.inflate(R.menu.action_bar, menu)
+
+        // Set up icons
+        menu.apply {
+            fun icon(icon: FontAwesomeIcons) = IconDrawable(this@ActivityRoot, icon)
+                    .colorRes(R.color.textWhite)
+                    .actionBarSize()
+
+            findItem(R.id.action_filter).icon = icon(FontAwesomeIcons.fa_filter)
+            findItem(R.id.action_search).icon = icon(FontAwesomeIcons.fa_search)
+            findItem(R.id.action_settings).icon = icon(FontAwesomeIcons.fa_cogs)
+        }
         this.menu = menu
         return true
     }
+
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         // Propagate the ID based selection to functions
@@ -220,6 +264,7 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
             R.id.action_bug_report -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://goo.gl/forms/9qI2iFBwAa"))).let { true }
             R.id.action_feedback_report -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://goo.gl/forms/66Q61KsU0G"))).let { true }
             R.id.action_search -> applyOnContent { onSearchButtonClick() }.let { true }
+            R.id.action_filter -> applyOnContent { onFilterButtonClick() }.let { true }
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -237,7 +282,7 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
         toggle.syncState()
     }
 
-    private fun<T : Fragment> navigateRoot(type: Class<T>, mode: ActionBarMode = ActionBarMode.NONE) {
+    override fun <T : Fragment> navigateRoot(type: Class<T>, mode: ActionBarMode) {
         setActionBarMode(mode)
 
         // If not already there, navigate with fragment transaction
@@ -252,17 +297,21 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
     }
 
     private fun setActionBarMode(mode: ActionBarMode) {
-        if (listOf(ActionBarMode.TABS, ActionBarMode.SEARCHTABS).contains(mode)) {
+        if (listOf(ActionBarMode.TABS, ActionBarMode.SEARCHTABS, ActionBarMode.SEARCHTABSFILTER).contains(mode)) {
             tabs.visibility = View.VISIBLE
         } else {
             tabs.visibility = View.GONE
         }
 
+        onHome = mode == ActionBarMode.HOME
+
         // Show the search button
-        menu?.findItem(R.id.action_search)?.isVisible = listOf(ActionBarMode.SEARCH, ActionBarMode.SEARCHTABS, ActionBarMode.SEARCHMAP).contains(mode)
+        menu?.findItem(R.id.action_search)?.isVisible = listOf(ActionBarMode.SEARCH, ActionBarMode.SEARCHTABS, ActionBarMode.SEARCHMAP, ActionBarMode.SEARCHTABSFILTER).contains(mode)
 
         // Show map button
         menu?.findItem(R.id.action_map)?.isVisible = (mode == ActionBarMode.MAP || mode == ActionBarMode.SEARCHMAP)
+
+        menu?.findItem(R.id.action_filter)?.isVisible = mode == ActionBarMode.SEARCHTABSFILTER
     }
 
     private fun setupNav() {
@@ -270,25 +319,36 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
         navView.setNavigationItemSelectedListener {
             //Handle the ID
             when (it.itemId) {
-                R.id.navHome -> navigateRoot(FragmentViewHome::class.java)
-                R.id.navEvents -> navigateRoot(FragmentViewEvents::class.java, ActionBarMode.SEARCHTABS)
+                R.id.navHome -> navigateRoot(FragmentViewHome::class.java, ActionBarMode.HOME)
+                R.id.navEvents -> navigateRoot(FragmentViewEvents::class.java, ActionBarMode.SEARCHTABSFILTER)
                 R.id.navInfo -> navigateRoot(FragmentViewInfoGroups::class.java)
                 R.id.navMaps -> navigateRoot(FragmentViewMaps::class.java, ActionBarMode.TABS)
                 R.id.navDealersDen -> navigateRoot(FragmentViewDealers::class.java, ActionBarMode.SEARCH)
                 R.id.navAbout -> navigateRoot(FragmentViewAbout::class.java)
+                R.id.navLogin -> startActivity<LoginActivity>()
+                R.id.navMessages -> navigateIfLoggedIn(FragmentViewMessageList::class.java)
+                R.id.navFursuitGames -> {
+                    if (RemotePreferences.nativeFursuitGames) {
+                        navigateIfLoggedIn(FragmentViewFursuits::class.java, ActionBarMode.TABS)
+                    } else {
+                        val url = if (AuthPreferences.isLoggedIn()) {
+                            "https://app.eurofurence.org/collectemall/#token-${AuthPreferences.token}"
+                        } else {
+                            "https://app.eurofurence.org/collectemall/#main"
+                        }
+
+                        browse(url)
+                    }
+                }
                 R.id.navWebSite -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.eurofurence.org/")))
                 R.id.navWebTwitter -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://twitter.com/eurofurence")))
                 R.id.navDevReload -> UpdateIntentService.dispatchUpdate(this)
-                R.id.navMap -> navigateRoot(FragmentPoiMap::class.java)
-                R.id.navFeedback -> FeedbackManager.showFeedbackActivity(this@ActivityRoot)
                 R.id.navDevSettings -> handleSettings()
                 R.id.navDevClear -> {
-                    AlertDialog.Builder(ContextThemeWrapper(this, R.style.appcompatDialog))
-                            .setTitle("Clearing Database")
-                            .setMessage("This will get rid of all cached items you have stored locally. You will need an internet connection to restart!")
-                            .setPositiveButton("Clear", { dialogInterface, i -> database.clear(); imageService.clear(); preferences.edit().clear().commit(); RemoteConfig.clear(); System.exit(0) })
-                            .setNegativeButton("Cancel", { dialogInterface, i -> })
-                            .show()
+                    alert("Empty app cache. You WILL need an internet connection to restart", "Clear database") {
+                        yesButton { ResetReceiver.fire(this@ActivityRoot) }
+                        noButton { longToast("Not clearing DB") }
+                    }.show()
                 }
             }
 
@@ -299,12 +359,12 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
 
         // Set up dates to EF
         // Manually set the first date, since the database is not updated with EF 22
-        val firstDay = DateTime(2017, 8, 16, 0, 0)
+        val firstDay = DateTime(RemotePreferences.nextConStart)
 
         // Calculate the days between, using the current time. Todo: timezones
         val days = Days.daysBetween(DateTime.now(), DateTime(firstDay)).days
 
-        if (remotePreferences.mapsEnabled == false) {
+        if (!RemotePreferences.mapsEnabled) {
             navView.menu.findItem(R.id.navMap).isVisible = false
         }
 
@@ -315,17 +375,44 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
             navDays.text = "Only $days days left!"
     }
 
-    override fun navigateToEvent(eventEntry: EventEntry) {
-        navigateToSubFragment(FragmentViewEvent(eventEntry))
+    private fun <T : Fragment> navigateIfLoggedIn(fragment: Class<T>, mode: ActionBarMode = ActionBarMode.NONE): Boolean {
+        if (AuthPreferences.isLoggedIn()) {
+            navigateRoot(fragment, mode)
+            return true
+        } else {
+            longToast("You need to login before you can see private messages!")
+            return false
+        }
     }
 
-    override fun navigateToInfo(info: Info) {
-        navigateToSubFragment(FragmentViewInfo(info))
+
+    override fun navigateToEvent(event: EventRecord) {
+        navigateToSubFragment(FragmentViewEvent(event))
+    }
+
+    override fun navigateToKnowledgeEntry(knowledgeEntry: KnowledgeEntryRecord) {
+        navigateToSubFragment(FragmentViewInfo(knowledgeEntry))
     }
 
 
-    override fun navigateToDealer(dealer: Dealer) {
+    override fun navigateToDealer(dealer: DealerRecord) {
         navigateToSubFragment(FragmentViewDealer(dealer))
+    }
+
+    override fun navigateToMessage(message: PrivateMessageRecord) {
+        val fragment = FragmentViewMessageItem().withArguments(
+                "message" to Gson().toJson(message)
+        )
+
+        navigateToSubFragment(fragment)
+    }
+
+    override fun navigateToAnnouncement(announcementRecord: AnnouncementRecord) {
+        val fragment = FragmentViewAnnouncement().withArguments(
+                "id" to announcementRecord.id.toString()
+        )
+
+        navigateToSubFragment(fragment)
     }
 
     private fun navigateToSubFragment(fragment: Fragment) =
@@ -336,23 +423,7 @@ class ActivityRoot : AppCompatActivity(), RootAPI, SharedPreferences.OnSharedPre
                     .addToBackStack(null)
                     .commit()
 
-    /**
-     * Database is lazily initialized and then provided as part of the root API
-     */
-    override val database by lazy { Database(this) }
-
-    private fun setupFab() {
-        fab.setOnClickListener { view ->
-            // Notify the update to the user
-            Snackbar.make(findViewById(R.id.content)!!, "Updating the database", Snackbar.LENGTH_LONG).show()
-
-            // Start the update service
-            UpdateIntentService.dispatchUpdate(this@ActivityRoot)
-        }
-
-        //if (!BuildConfig.DEBUG)
-        fab.visibility = View.INVISIBLE
-    }
+    override val db by lazyLocateDb()
 
     private fun handleSettings() {
         logv { "Starting settings activity" }
